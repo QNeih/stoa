@@ -1,7 +1,7 @@
 # Stoa
 
 A phone app that tracks time spent on your goals, shows today's plan and what got done.
-It is an installable offline web app (PWA): plain TypeScript, IndexedDB and no backend.
+It is an installable offline web app (PWA): React and TypeScript, IndexedDB and no backend.
 
 ## Use
 
@@ -35,7 +35,7 @@ Paste it under Settings on the phone. It is stored in the phone's browser storag
 ```sh
 npm install
 npm run dev       # http://localhost:5173
-npm test          # unit tests for time, stats, log format and roll-up
+npm test          # unit tests for time, stats, log format and roll-up, plus a Plan screen check
 npm run build     # typecheck and build to dist/
 npm run preview   # serve dist/ at http://localhost:4173 (service worker on)
 npm run icons     # redraw the PNG icons in public/

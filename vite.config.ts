@@ -1,5 +1,6 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { createHash } from "node:crypto";
+import react from "@vitejs/plugin-react";
 import { defineConfig, type Plugin } from "vite";
 
 /** Emits sw.js with the list of built files, so the app works offline after the first load. */
@@ -50,7 +51,7 @@ function contentSecurityPolicy(): Plugin {
 // Relative base so the build runs from any static host path.
 export default defineConfig({
   base: "./",
-  plugins: [contentSecurityPolicy(), serviceWorker()],
+  plugins: [react(), contentSecurityPolicy(), serviceWorker()],
   server: { port: 5173, strictPort: true },
   preview: { port: 4173, strictPort: true },
 });
