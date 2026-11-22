@@ -20,10 +20,37 @@ function serviceWorker(): Plugin {
   };
 }
 
+/**
+ * Content Security Policy for the built app: only its own code runs, and the only
+ * remote it talks to is the GitHub API. Limits what injected content could do with the token.
+ * Build only, because the dev server injects inline scripts.
+ */
+const CSP = [
+  "default-src 'self'",
+  "script-src 'self'",
+  "style-src 'self'",
+  "img-src 'self' data: blob:",
+  "connect-src 'self' https://api.github.com",
+  "manifest-src 'self'",
+  "worker-src 'self'",
+  "object-src 'none'",
+  "base-uri 'none'",
+  "form-action 'none'",
+].join("; ");
+
+function contentSecurityPolicy(): Plugin {
+  return {
+    name: "stoa-csp",
+    apply: "build",
+    transformIndexHtml: (html) =>
+      html.replace("<head>", `<head>\n    <meta http-equiv="Content-Security-Policy" content="${CSP}" />`),
+  };
+}
+
 // Relative base so the build runs from any static host path.
 export default defineConfig({
   base: "./",
-  plugins: [serviceWorker()],
+  plugins: [contentSecurityPolicy(), serviceWorker()],
   server: { port: 5173, strictPort: true },
   preview: { port: 4173, strictPort: true },
 });
