@@ -6,7 +6,7 @@ It is an installable offline web app (PWA): plain TypeScript, IndexedDB and no b
 ## Use
 
 - **Today**: time today, done list, time this week per big goal, days since time was last spent, result counters (+1).
-- **Plan**: today's plan from the data repo; any habit can also start without a plan.
+- **Plan**: today's plan from the data repo, with planned and spent minutes per item and the time spent off the plan. Any habit can also start without a plan.
 - **Running**: only the timer and the task. One timer at a time. It survives closing the app; after 4 hours a reopened app asks "still going?".
 - **Stop**: an optional one-line note, which goes into the done list.
 - **Log**: add a past session, fix it or delete it, or delete a counter tap.
@@ -43,5 +43,6 @@ npm run icons     # redraw the PNG icons in public/
 
 ## Deploy
 
+Every push to `main` runs the tests, builds, and deploys to GitHub Pages (`.github/workflows/pages.yml`).
 `dist/` is a static site with relative paths, so any static host works. Installing to the home screen needs HTTPS.
 The service worker caches the build, and a new deploy is picked up on the next app start.

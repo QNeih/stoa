@@ -1,4 +1,4 @@
-import type { Config, CounterEntry, LogEntry, SessionEntry } from "./types";
+import type { Config, CounterEntry, LogEntry, Plan, PlanItem, SessionEntry } from "./types";
 import { daysBetween, localDate, splitByDay, startOfWeek } from "./time";
 
 export interface DoneItem {
@@ -38,6 +38,36 @@ export function doneOn(entries: LogEntry[], day: string): DoneItem[] {
     if (part && part.ms > 0) out.push({ session: s, ms: part.ms });
   }
   return out.sort((a, b) => a.session.start.localeCompare(b.session.start));
+}
+
+export interface PlanProgress {
+  items: { item: PlanItem; spentMs: number }[];
+  plannedMs: number;
+  /** Time on `day` spent on plan items (same habit and task). */
+  onPlanMs: number;
+  /** Time on `day` spent on anything else. */
+  offPlanMs: number;
+}
+
+/** Planned against spent time per plan item, for the plan's own day. */
+export function planProgress(plan: Plan, entries: LogEntry[], day: string): PlanProgress {
+  const done = doneOn(entries, day);
+  const key = (habit: string, task: string) => `${habit}\u0000${task.trim()}`;
+  const spent = new Map<string, number>();
+  for (const d of done) {
+    const k = key(d.session.habit, d.session.task);
+    spent.set(k, (spent.get(k) ?? 0) + d.ms);
+  }
+  const keys = new Set(plan.items.map((i) => key(i.habit, i.task)));
+  const items = plan.items.map((item) => ({ item, spentMs: spent.get(key(item.habit, item.task)) ?? 0 }));
+  const onPlanMs = [...keys].reduce((sum, k) => sum + (spent.get(k) ?? 0), 0);
+  const totalMs = done.reduce((sum, d) => sum + d.ms, 0);
+  return {
+    items,
+    plannedMs: plan.items.reduce((sum, i) => sum + i.minutes * 60_000, 0),
+    onPlanMs,
+    offPlanMs: totalMs - onPlanMs,
+  };
 }
 
 export function dashboard(config: Config, entries: LogEntry[], now: Date): Dashboard {

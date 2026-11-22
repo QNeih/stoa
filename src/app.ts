@@ -2,7 +2,7 @@ import { h } from "./dom";
 import { Store, type Settings, type SyncStatus } from "./db";
 import { GitHub } from "./github";
 import { slugify, toContract } from "./logs";
-import { dashboard, doneOn } from "./stats";
+import { dashboard, planProgress } from "./stats";
 import { restore, rollUp } from "./sync";
 import { formatClock, formatDuration, formatTime, isoLocal, localDate } from "./time";
 import type { Config, Habit, Plan, RunningTimer, SessionEntry, StoredEntry } from "./types";
@@ -348,7 +348,7 @@ export class App {
   private planScreen(): HTMLElement {
     const today = localDate(new Date());
     const plan = this.plan?.date === today ? this.plan : null;
-    const doneToday = doneOn(this.entries, today).map((d) => d.session);
+    const progress = plan ? planProgress(plan, this.entries, today) : null;
     const task = h("input", { type: "text", placeholder: "Task (optional)" });
     const habit = this.habitSelect();
     const hasHabits = this.config.habits.some((x) => !x.archived);
@@ -356,15 +356,20 @@ export class App {
       "div",
       null,
       this.header("Plan"),
-      plan
+      plan && progress
         ? h("section", null,
-            h("p", { class: "muted" }, `Time budget ${formatDuration(plan.time_budget_min * 60_000)}`),
+            h("section", { class: "card" },
+              h("div", { class: "row" }, h("span", null, "Planned"), h("strong", null, formatDuration(progress.plannedMs))),
+              h("div", { class: "row" }, h("span", null, "Spent on the plan"), h("strong", null, formatDuration(progress.onPlanMs))),
+              h("div", { class: "row muted" }, h("span", null, "Spent on other things"), h("span", null, formatDuration(progress.offPlanMs))),
+              plan.time_budget_min * 60_000 !== progress.plannedMs &&
+                h("div", { class: "muted small" }, `Time budget ${formatDuration(plan.time_budget_min * 60_000)}`)),
             plan.note && h("p", { class: "note" }, plan.note),
-            h("ul", { class: "list" }, plan.items.map((it) => {
-              const done = doneToday.some((s) => s.habit === it.habit && s.task === it.task);
-              return h("li", { class: done ? "row done" : "row" },
+            h("ul", { class: "list" }, progress.items.map(({ item: it, spentMs }) => {
+              const full = spentMs >= it.minutes * 60_000;
+              return h("li", { class: full ? "row done" : "row" },
                 h("div", null, h("strong", null, it.task || this.habitName(it.habit)),
-                  h("div", { class: "muted small" }, `${this.habitName(it.habit)} · ${it.minutes} min${done ? " · done" : ""}`)),
+                  h("div", { class: "muted small" }, `${this.habitName(it.habit)} · ${Math.floor(spentMs / 60_000)} of ${it.minutes} min`)),
                 h("button", { onclick: () => this.startTimer(it.habit, it.task) }, "Start"));
             })))
         : h("section", { class: "card" }, h("p", null, "No plan for today yet."),
