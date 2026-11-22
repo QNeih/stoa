@@ -7,7 +7,7 @@ It is an installable offline web app (PWA): React and TypeScript, IndexedDB, and
 
 - **Today**: time today, done list, time this week per big goal, days since time was last spent, result counters (+1).
 - **Plan**: today's plan from the Stoa sheet, with planned and spent minutes per item and the time spent off the plan. Any habit can also start without a plan.
-- **Running**: only the timer and the task. One timer at a time. It survives closing the app; after 4 hours a reopened app asks "still going?".
+- **Running**: only the timer and the task. One timer at a time. Forgot to start? Change its start time (up to 24 hours back), or set "Started at" under Plan. It survives closing the app; after 4 hours a reopened app asks "still going?".
 - **Stop**: an optional one-line note, which goes into the done list.
 - **Log**: add a past session, fix it or delete it, or delete a counter tap.
 - **Habits**: goals (ranked, archived, never deleted), habits (one field plus a goal, can move to another goal) and counters.

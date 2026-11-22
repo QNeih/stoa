@@ -1,4 +1,4 @@
-import type { FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 import { Header } from "../components/Header";
 import { HabitSelect } from "../components/HabitSelect";
 import { habitName } from "../format";
@@ -14,10 +14,13 @@ export function PlanScreen() {
   const progress = plan ? planProgress(plan, entries, today) : null;
   const hasHabits = config.habits.some((x) => !x.archived);
 
-  const startWithoutPlan = (e: FormEvent<HTMLFormElement>) => {
+  const [startError, setStartError] = useState<string | null>(null);
+
+  const startWithoutPlan = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const form = new FormData(e.currentTarget);
-    void startTimer(String(form.get("habit")), String(form.get("task")));
+    const at = String(form.get("startedAt"));
+    setStartError(await startTimer(String(form.get("habit")), String(form.get("task")), at ? new Date(at) : undefined));
   };
 
   return (
@@ -73,6 +76,15 @@ export function PlanScreen() {
           <form className="stack" onSubmit={startWithoutPlan}>
             <HabitSelect name="habit" />
             <input name="task" type="text" placeholder="Task (optional)" />
+            <label className="stack">
+              Started at (optional, empty means now)
+              <input name="startedAt" type="datetime-local" />
+            </label>
+            {startError && (
+              <p className="danger small" role="alert">
+                {startError}
+              </p>
+            )}
             <button className="primary" type="submit">
               Start
             </button>

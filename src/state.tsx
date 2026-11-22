@@ -6,7 +6,7 @@ import { AuthError, forgetToken, getAccessToken, loadGis, renewOnTap } from "./g
 import { slugify, toContract } from "./logs";
 import { ApiError, SheetsApi } from "./sheets";
 import { restore, rollUp } from "./sync";
-import { isoLocal, localDate } from "./time";
+import { isoLocal, localDate, validateStart } from "./time";
 import type { Config, Plan, RunningTimer, SessionEntry, StoredEntry } from "./types";
 
 /** After this long a reopened app asks whether the timer is still going. */
@@ -50,6 +50,17 @@ async function saveTimerAsSession(store: Store, t: RunningTimer, end: Date, note
   const start = new Date(t.start);
   if (end <= start) end = new Date(start.getTime() + 60_000);
   await store.addEntry({ type: "session", habit: t.habit, task: t.task, start: t.start, end: isoLocal(end), note: note.trim() });
+}
+
+/** End of the latest saved session, or null when there is none. */
+function latestSessionEnd(entries: StoredEntry[]): Date | null {
+  let latest: Date | null = null;
+  for (const e of entries) {
+    if (e.type !== "session") continue;
+    const end = new Date(e.end);
+    if (!latest || end > latest) latest = end;
+  }
+  return latest;
 }
 
 export function useStoaState(store: Store, initial: StoaData) {
@@ -140,15 +151,40 @@ export function useStoaState(store: Store, initial: StoaData) {
 
   // --- timer ---
 
-  async function startTimer(habit: string, task: string): Promise<void> {
+  /**
+   * Starts a timer, now or at `startAt` in the past. Returns a message when `startAt` is not allowed,
+   * and null once the timer runs.
+   */
+  async function startTimer(habit: string, task: string, startAt?: Date): Promise<string | null> {
     renewForTap();
     const now = new Date();
+    const start = startAt ?? now;
     const running = dataRef.current.timer;
+    if (startAt) {
+      // A running timer is stopped at the new start, so the new start must leave it a minute.
+      const runningFloor = running ? new Date(new Date(running.start).getTime() + 60_000) : null;
+      const saved = latestSessionEnd(dataRef.current.entries);
+      const notBefore = runningFloor && (!saved || runningFloor > saved) ? runningFloor : saved;
+      const problem = validateStart(startAt, now, notBefore);
+      if (problem) return problem;
+    }
     // One timer at a time: starting another stops the first.
-    if (running) await saveTimerAsSession(store, running, now, "");
-    await store.setTimer({ habit, task: task.trim(), start: isoLocal(now) });
+    if (running) await saveTimerAsSession(store, running, start, "");
+    await store.setTimer({ habit, task: task.trim(), start: isoLocal(start) });
     await reload();
     location.hash = "#/today";
+    return null;
+  }
+
+  /** Moves the running timer's start and restarts the "still going?" count. Returns a message when not allowed. */
+  async function setTimerStart(start: Date): Promise<string | null> {
+    const t = dataRef.current.timer;
+    if (!t) return null;
+    const problem = validateStart(start, new Date(), latestSessionEnd(dataRef.current.entries));
+    if (problem) return problem;
+    await store.setTimer({ habit: t.habit, task: t.task, start: isoLocal(start) });
+    await reload();
+    return null;
   }
 
   async function stopTimer(note: string): Promise<void> {
@@ -354,6 +390,7 @@ export function useStoaState(store: Store, initial: StoaData) {
     dismissToast: () => setToast(null),
     sync: syncNow,
     startTimer,
+    setTimerStart,
     requestStop: () => setStopEnd(new Date()),
     cancelStop: () => setStopEnd(null),
     stopTimer,

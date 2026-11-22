@@ -1,5 +1,28 @@
 import { describe, expect, it } from "vitest";
-import { daysBetween, formatDuration, isoLocal, localDate, splitByDay, startOfWeek } from "../src/time";
+import { daysBetween, formatDuration, isoLocal, localDate, splitByDay, startOfWeek, validateStart } from "../src/time";
+
+describe("validateStart", () => {
+  const now = new Date("2026-11-22T20:00:00+01:00");
+  const at = (iso: string) => new Date(`2026-11-22T${iso}+01:00`);
+  it("accepts a start 20 minutes back", () => {
+    expect(validateStart(at("19:40:00"), now, null)).toBeNull();
+    expect(validateStart(at("19:40:00"), now, at("19:00:00"))).toBeNull();
+  });
+  it("rejects a start in the future", () => {
+    expect(validateStart(at("20:01:00"), now, null)).toMatch(/future/);
+  });
+  it("rejects a start more than 24 hours back and accepts exactly 24", () => {
+    expect(validateStart(new Date("2026-11-21T19:59:00+01:00"), now, null)).toMatch(/24 hours/);
+    expect(validateStart(new Date("2026-11-21T20:00:00+01:00"), now, null)).toBeNull();
+  });
+  it("rejects a start before the last session ended and names that time", () => {
+    expect(validateStart(at("18:50:00"), now, at("19:00:00"))).toMatch(/before 19:00/);
+    expect(validateStart(at("19:00:00"), now, at("19:00:00"))).toBeNull();
+  });
+  it("rejects an invalid date", () => {
+    expect(validateStart(new Date("nope"), now, null)).toMatch(/valid/);
+  });
+});
 
 describe("time", () => {
   it("writes ISO times with the local offset", () => {

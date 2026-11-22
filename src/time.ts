@@ -81,3 +81,21 @@ export function formatClock(ms: number): string {
 export function formatTime(d: Date): string {
   return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
+
+/** How far back a timer may be started or moved. */
+export const MAX_BACKDATE_MS = 24 * 3600_000;
+
+/**
+ * Checks a timer start: valid, not after `now`, at most 24 hours back, and not before `notBefore`
+ * (the end of the latest saved session). Returns a short message, or null when the start is fine.
+ */
+export function validateStart(start: Date, now: Date, notBefore: Date | null): string | null {
+  if (Number.isNaN(start.getTime())) return "Enter a valid start time.";
+  if (start.getTime() > now.getTime()) return "The start cannot be in the future.";
+  if (now.getTime() - start.getTime() > MAX_BACKDATE_MS) return "The start cannot be more than 24 hours ago.";
+  if (notBefore && start.getTime() < notBefore.getTime()) {
+    const day = localDate(notBefore) === localDate(now) ? "" : `${localDate(notBefore)} `;
+    return `The start cannot be before ${day}${formatTime(notBefore)}, when your last session ended.`;
+  }
+  return null;
+}
