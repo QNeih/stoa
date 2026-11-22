@@ -9,13 +9,14 @@ import type { SessionEntry } from "../src/types";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-const session = (habit: string, task: string, start: string, end: string): SessionEntry & { day: string } => ({
+const session = (habit: string, task: string, start: string, end: string): SessionEntry & { uid: string; day: string } => ({
   type: "session",
   habit,
   task,
   start: `2026-11-22T${start}:00+01:00`,
   end: `2026-11-22T${end}:00+01:00`,
   note: "",
+  uid: `${habit}-${start}`,
   day: "2026-11-22",
 });
 
@@ -44,7 +45,7 @@ const data: StoaData = {
       { habit: "write", task: "", minutes: 30 },
     ],
   },
-  settings: { token: "", repo: "" },
+  account: null,
   syncStatus: null,
   pending: 0,
 };
@@ -67,7 +68,7 @@ describe("Plan screen", () => {
   });
 
   it("shows planned against spent time per item and in total", () => {
-    // Without a token the provider never touches the store, so an empty one will do.
+    // Signed out, the provider never touches the store, so an empty one will do.
     act(() => root.render(<StoaProvider store={{} as Store} initial={data}><PlanScreen /></StoaProvider>));
 
     const rows = [...container.querySelectorAll(".card .row")].map((r) => r.textContent);

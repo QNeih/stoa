@@ -1,16 +1,18 @@
 // Phone storage in IndexedDB: log entries plus a key-value store for
-// config, plan, running timer, settings and the days not yet rolled up.
+// config, plan, running timer, the signed-in account and the days not yet rolled up.
+// The Google access token is never stored here.
 import type { Config, LogEntry, Plan, RunningTimer, StoredEntry } from "./types";
 import type { SyncStore } from "./sync";
 import { dayOf } from "./logs";
+import { newUid } from "./sheets";
 
 const DB_NAME = "stoa";
 const ENTRIES = "entries";
 const KV = "kv";
 
-export interface Settings {
-  token: string;
-  repo: string;
+/** The Google account the phone syncs with; the token stays in memory (googleAuth.ts). */
+export interface Account {
+  email: string;
 }
 
 export interface SyncStatus {
@@ -40,11 +42,25 @@ export class Store implements SyncStore {
   private constructor(private db: IDBDatabase) {}
 
   static async open(): Promise<Store> {
-    const open = indexedDB.open(DB_NAME, 1);
-    open.onupgradeneeded = () => {
+    const open = indexedDB.open(DB_NAME, 2);
+    open.onupgradeneeded = (event) => {
       const db = open.result;
-      db.createObjectStore(ENTRIES, { keyPath: "id", autoIncrement: true }).createIndex("day", "day");
-      db.createObjectStore(KV);
+      const tx = open.transaction!;
+      if (event.oldVersion < 1) {
+        db.createObjectStore(ENTRIES, { keyPath: "id", autoIncrement: true }).createIndex("day", "day");
+        db.createObjectStore(KV);
+      }
+      if (event.oldVersion < 2) {
+        // Version 2 syncs to a Google Sheet: every entry gets its row id, and the GitHub token goes.
+        const cursor = tx.objectStore(ENTRIES).openCursor();
+        cursor.onsuccess = () => {
+          const c = cursor.result;
+          if (!c) return;
+          if (!c.value.uid) c.update({ ...c.value, uid: newUid() });
+          c.continue();
+        };
+        tx.objectStore(KV).delete("settings");
+      }
     };
     const store = new Store(await req(open));
     // Ask the browser not to evict data under storage pressure.
@@ -66,8 +82,8 @@ export class Store implements SyncStore {
     await done(tx);
   }
 
-  getSettings = () => this.kvGet<Settings>("settings", { token: "", repo: "" });
-  setSettings = (s: Settings) => this.kvSet("settings", s);
+  getAccount = () => this.kvGet<Account | null>("account", null);
+  setAccount = (a: Account | null) => this.kvSet("account", a);
   getTimer = () => this.kvGet<RunningTimer | null>("timer", null);
   setTimer = (t: RunningTimer | null) => this.kvSet("timer", t);
   getPlan = () => this.kvGet<Plan | null>("plan", null);
@@ -111,7 +127,7 @@ export class Store implements SyncStore {
   async addEntry(e: LogEntry): Promise<void> {
     const day = dayOf(e);
     const tx = this.db.transaction(ENTRIES, "readwrite");
-    tx.objectStore(ENTRIES).add({ ...e, day });
+    tx.objectStore(ENTRIES).add({ ...e, day, uid: newUid() });
     await done(tx);
     await this.markDirty(day);
   }
@@ -121,7 +137,7 @@ export class Store implements SyncStore {
     const old = (await req(store.get(id))) as StoredEntry | undefined;
     const day = dayOf(e);
     const tx = this.db.transaction(ENTRIES, "readwrite");
-    tx.objectStore(ENTRIES).put({ ...e, day, id });
+    tx.objectStore(ENTRIES).put({ ...e, day, id, uid: old?.uid ?? newUid() });
     await done(tx);
     if (old) await this.markDirty(old.day);
     await this.markDirty(day);
@@ -135,8 +151,14 @@ export class Store implements SyncStore {
     if (old) await this.markDirty(old.day);
   }
 
-  /** Bulk import from the data repo; these days are already in sync. */
-  async importEntries(entries: LogEntry[]): Promise<void> {
+  /** Marks every day with entries, so the next roll-up writes the phone's copy of all of them. */
+  async markAllDirty(): Promise<void> {
+    const days = new Set([...(await this.dirtyDays()), ...(await this.allEntries()).map((e) => e.day)]);
+    await this.kvSet("dirtyDays", [...days].sort());
+  }
+
+  /** Bulk import from the sheet; these days are already in sync. */
+  async importEntries(entries: (LogEntry & { uid: string })[]): Promise<void> {
     const tx = this.db.transaction(ENTRIES, "readwrite");
     for (const e of entries) tx.objectStore(ENTRIES).add({ ...e, day: dayOf(e) });
     await done(tx);

@@ -22,16 +22,24 @@ function serviceWorker(): Plugin {
 }
 
 /**
- * Content Security Policy for the built app: only its own code runs, and the only
- * remote it talks to is the GitHub API. Limits what injected content could do with the token.
+ * Content Security Policy for the built app: only its own code and Google's sign-in script run,
+ * and the only remotes it talks to are Google sign-in, the Drive API (www.googleapis.com) and the
+ * Sheets API. Limits what injected content could do with the access token.
  * Build only, because the dev server injects inline scripts.
  */
+const GSI = "https://accounts.google.com/gsi/";
+/**
+ * The <style> element Google's sign-in script inserts on load (styles for its button UI).
+ * If Google changes it, the browser logs a blocked style; the token popup works without it.
+ */
+const GSI_INLINE_STYLE = "'sha256-88QphsXJQwxKP9xXR175ZSMzpaq6Swzj9u3QQ+G2Wig='";
 const CSP = [
   "default-src 'self'",
-  "script-src 'self'",
-  "style-src 'self'",
+  `script-src 'self' ${GSI}client`,
+  `style-src 'self' ${GSI}style ${GSI_INLINE_STYLE}`,
+  `frame-src ${GSI}`,
   "img-src 'self' data: blob:",
-  "connect-src 'self' https://api.github.com",
+  `connect-src 'self' ${GSI} https://www.googleapis.com https://sheets.googleapis.com`,
   "manifest-src 'self'",
   "worker-src 'self'",
   "object-src 'none'",

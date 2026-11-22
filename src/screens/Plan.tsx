@@ -8,7 +8,7 @@ import { formatDuration, localDate } from "../time";
 
 /** Today's plan with planned against spent time, and a start for any habit. */
 export function PlanScreen() {
-  const { config, entries, plan: stored, settings, startTimer } = useStoa();
+  const { config, entries, plan: stored, account, startTimer } = useStoa();
   const today = localDate(new Date());
   const plan = stored?.date === today ? stored : null;
   const progress = plan ? planProgress(plan, entries, today) : null;
@@ -61,9 +61,9 @@ export function PlanScreen() {
         <section className="card">
           <p>No plan for today yet.</p>
           <p className="muted small">
-            {settings.token
-              ? "It comes from the daily check-in with Claude and loads on the next sync."
-              : "Connect the data repo in Settings to load plans from the check-in."}
+            {account
+              ? "It comes from the daily check-in with Claude, which writes it to your Stoa sheet, and loads on the next sync."
+              : "Sign in with Google in Settings to load plans from the check-in."}
           </p>
         </section>
       )}

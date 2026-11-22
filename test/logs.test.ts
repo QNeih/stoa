@@ -1,12 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { dayOf, parseJsonl, slugify, toJsonl } from "../src/logs";
+import { dayOf, slugify, toContract } from "../src/logs";
 import type { StoredEntry } from "../src/types";
 
 describe("logs", () => {
   const stored: StoredEntry[] = [
-    { id: 2, day: "2026-11-22", type: "counter", counter: "apps", at: "2026-11-22T11:00:00+01:00", delta: 1 },
+    { id: 2, uid: "b", day: "2026-11-22", type: "counter", counter: "apps", at: "2026-11-22T11:00:00+01:00", delta: 1 },
     {
       id: 1,
+      uid: "a",
       day: "2026-11-22",
       type: "session",
       habit: "gym",
@@ -17,14 +18,11 @@ describe("logs", () => {
     },
   ];
 
-  it("writes the contract fields only, one line per entry in time order", () => {
-    const text = toJsonl(stored);
-    expect(text).toBe(
-      '{"type":"session","habit":"gym","task":"Legs","start":"2026-11-22T09:00:00+01:00","end":"2026-11-22T10:00:00+01:00","note":""}\n' +
-        '{"type":"counter","counter":"apps","at":"2026-11-22T11:00:00+01:00","delta":1}\n',
-    );
-    expect(parseJsonl(text)).toHaveLength(2);
-    expect(toJsonl([])).toBe("");
+  it("keeps the contract fields only", () => {
+    expect(stored.map(toContract)).toEqual([
+      { type: "counter", counter: "apps", at: "2026-11-22T11:00:00+01:00", delta: 1 },
+      { type: "session", habit: "gym", task: "Legs", start: "2026-11-22T09:00:00+01:00", end: "2026-11-22T10:00:00+01:00", note: "" },
+    ]);
   });
 
   it("files a session under its local start date", () => {
