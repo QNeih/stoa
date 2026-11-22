@@ -21,13 +21,17 @@ self.addEventListener("activate", (event) => {
   );
 });
 
+// ignoreVary: module scripts are requested with an Origin header, the precache was filled without one,
+// and a host that answers with "Vary: Origin" (vite preview does) would otherwise miss the cache offline.
+const MATCH = { ignoreSearch: true, ignoreVary: true };
+
 self.addEventListener("fetch", (event) => {
   const req = event.request;
   if (req.method !== "GET" || new URL(req.url).origin !== self.location.origin) return;
   if (req.mode === "navigate") {
     const shell = new URL("./", self.registration.scope).href;
-    event.respondWith(caches.match(shell).then((hit) => hit || fetch(req)));
+    event.respondWith(caches.match(shell, MATCH).then((hit) => hit || fetch(req)));
     return;
   }
-  event.respondWith(caches.match(req, { ignoreSearch: true }).then((hit) => hit || fetch(req)));
+  event.respondWith(caches.match(req, MATCH).then((hit) => hit || fetch(req)));
 });
