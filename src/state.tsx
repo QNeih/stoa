@@ -2,7 +2,7 @@
 import { createContext, useContext, useEffect, useEffectEvent, useReducer, useRef, useState, type ReactNode } from "react";
 import type { Account, Store, SyncStatus } from "./db";
 import { activeGoals, counterName } from "./format";
-import { AuthError, forgetToken, getAccessToken } from "./googleAuth";
+import { AuthError, forgetToken, getAccessToken, loadGis, renewOnTap } from "./googleAuth";
 import { slugify, toContract } from "./logs";
 import { ApiError, SheetsApi } from "./sheets";
 import { restore, rollUp } from "./sync";
@@ -124,9 +124,24 @@ export function useStoaState(store: Store, initial: StoaData) {
     await reload();
   }
 
+  /**
+   * Renews the Google token from inside a tap, so the browser lets the renewal popup open.
+   * Call it first in a tap handler, before any await. It never waits and never fails the action.
+   */
+  function renewForTap(): void {
+    renewOnTap(dataRef.current.account?.email);
+  }
+
+  /** The Sync now button: renews the token in the tap, then syncs. */
+  function syncNow(): Promise<void> {
+    renewForTap();
+    return sync();
+  }
+
   // --- timer ---
 
   async function startTimer(habit: string, task: string): Promise<void> {
+    renewForTap();
     const now = new Date();
     const running = dataRef.current.timer;
     // One timer at a time: starting another stops the first.
@@ -137,6 +152,7 @@ export function useStoaState(store: Store, initial: StoaData) {
   }
 
   async function stopTimer(note: string): Promise<void> {
+    renewForTap();
     const running = dataRef.current.timer;
     if (!running) return;
     await saveTimerAsSession(store, running, stopEnd ?? new Date(), note);
@@ -177,9 +193,11 @@ export function useStoaState(store: Store, initial: StoaData) {
   // --- log ---
 
   async function tapCounter(id: string): Promise<void> {
+    renewForTap();
     const entry = { type: "counter" as const, counter: id, at: isoLocal(new Date()), delta: 1 };
     await store.addEntry(entry);
     await reload();
+    void sync();
     showToast(`${counterName(dataRef.current.config, id)} +1`, async () => {
       const tap = (await store.allEntries()).filter((e) => e.type === "counter" && e.counter === id && e.at === entry.at).pop();
       if (tap?.id !== undefined) await store.deleteEntry(tap.id);
@@ -188,9 +206,11 @@ export function useStoaState(store: Store, initial: StoaData) {
   }
 
   async function saveSession(entry: SessionEntry, id?: number): Promise<void> {
+    renewForTap();
     if (id !== undefined) await store.updateEntry(id, entry);
     else await store.addEntry(entry);
     await reload();
+    void sync();
   }
 
   async function deleteEntry(id: number): Promise<void> {
@@ -201,6 +221,7 @@ export function useStoaState(store: Store, initial: StoaData) {
   // --- config ---
 
   async function editConfig(change: (c: Config) => Config): Promise<void> {
+    renewForTap();
     await store.setConfig(change(dataRef.current.config), true);
     await reload();
     void sync();
@@ -306,6 +327,8 @@ export function useStoaState(store: Store, initial: StoaData) {
   useEffect(() => {
     checkStillGoing();
     syncOnOpen();
+    // Loaded ahead so a tap can open the renewal popup without waiting for the script.
+    loadGis().catch(() => undefined);
     const onVisibility = () => {
       if (document.visibilityState !== "visible") return;
       checkStillGoing();
@@ -329,7 +352,7 @@ export function useStoaState(store: Store, initial: StoaData) {
     stillGoingOpen,
     toast,
     dismissToast: () => setToast(null),
-    sync,
+    sync: syncNow,
     startTimer,
     requestStop: () => setStopEnd(new Date()),
     cancelStop: () => setStopEnd(null),

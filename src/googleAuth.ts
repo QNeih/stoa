@@ -73,18 +73,14 @@ export function loadGis(): Promise<Gis> {
   return scriptLoad;
 }
 
-/**
- * A valid access token. Without one, asks Google for a new one: with `interactive` the popup may
- * show the account chooser and consent; without it, a renewal for `hint` that fails when the browser
- * blocks the popup or Google needs the user. Both failures throw AuthError.
- */
-export async function getAccessToken({ interactive, hint }: { interactive: boolean; hint?: string }): Promise<string> {
-  if (current && current.expiresAt - EXPIRY_MARGIN_MS > Date.now()) return current.token;
-  current = null;
-  const gis = await loadGis();
+/** An access token request is in flight (its popup may be open); callers wait for it instead of opening another. */
+let pending: Promise<string> | null = null;
+
+function requestToken(gis: Gis, { interactive, hint }: { interactive: boolean; hint?: string }): Promise<string> {
+  if (pending) return pending;
   client ??= gis.accounts.oauth2.initTokenClient({ client_id: CLIENT_ID, scope: SCOPE, callback: () => undefined });
   const tokenClient = client;
-  return new Promise<string>((resolve, reject) => {
+  const request = new Promise<string>((resolve, reject) => {
     const timeout = setTimeout(() => reject(new AuthError("Google sign-in did not answer")), REQUEST_TIMEOUT_MS);
     tokenClient.callback = (r) => {
       clearTimeout(timeout);
@@ -99,6 +95,53 @@ export async function getAccessToken({ interactive, hint }: { interactive: boole
     };
     tokenClient.requestAccessToken({ prompt: interactive && !hint ? "select_account" : "", ...(hint ? { login_hint: hint } : {}) });
   });
+  pending = request;
+  const clear = () => {
+    if (pending === request) pending = null;
+  };
+  request.then(clear, clear);
+  return request;
+}
+
+/**
+ * A valid access token. Without one, asks Google for a new one: with `interactive` the popup may
+ * show the account chooser and consent; without it, a renewal for `hint` that fails when the browser
+ * blocks the popup or Google needs the user. Both failures throw AuthError.
+ */
+export async function getAccessToken({ interactive, hint }: { interactive: boolean; hint?: string }): Promise<string> {
+  if (current && current.expiresAt - EXPIRY_MARGIN_MS > Date.now()) return current.token;
+  if (pending) return pending;
+  current = null;
+  return requestToken(await loadGis(), { interactive, hint });
+}
+
+/** A tap renews a token that expires within this long, so the sync it starts does not run into the expiry. */
+const TAP_RENEW_MARGIN_MS = 5 * 60_000;
+
+/**
+ * Whether a tap should ask Google for a new token: the user has an account, no request is already
+ * running, and the token is missing (not yet fetched since the page opened) or expired or about to.
+ */
+export function shouldRenewOnTap(o: { hasAccount: boolean; expiresAt: number | null; now: number; requesting: boolean }): boolean {
+  if (!o.hasAccount || o.requesting) return false;
+  return o.expiresAt === null || o.expiresAt - TAP_RENEW_MARGIN_MS <= o.now;
+}
+
+/**
+ * Call synchronously from a tap handler, before any await: browsers only let a popup open when the
+ * tap itself opens it. Starts a silent renewal for `email` when the token needs one and never waits
+ * for it or throws; a sync that follows waits for the request, and a failed one shows "Sign in again".
+ * Needs Google's script already loaded (see `loadGis`), since loading it is asynchronous.
+ */
+export function renewOnTap(email: string | undefined): void {
+  const gis = window.google?.accounts?.oauth2 ? window.google : null;
+  if (!gis || !email) return;
+  if (!shouldRenewOnTap({ hasAccount: true, expiresAt: current?.expiresAt ?? null, now: Date.now(), requesting: pending !== null })) return;
+  try {
+    requestToken(gis, { interactive: false, hint: email }).catch(() => undefined);
+  } catch {
+    /* the browser refused to open the popup; the sync that follows reports "Sign in again" */
+  }
 }
 
 /**
