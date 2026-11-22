@@ -8,7 +8,11 @@ Offline PWA for tracking time on goals. See `README.md` for features and the dat
 - `src/time.ts`, `src/stats.ts`, `src/logs.ts`: pure logic (midnight split, dashboard numbers, JSONL, slugs). They are covered by `test/`.
 - `src/github.ts`, `src/sync.ts`: contents API client, roll-up and restore. The tests use a fake repo behind a fake fetch.
 - `src/db.ts`: IndexedDB store. Every entry change marks its day dirty; roll-up rewrites whole day files from the phone's copy.
-- `src/app.ts`: all screens, rendered with the `h()` helper in `src/dom.ts`. No framework.
+- `src/state.tsx`: React app state and all actions (timer, still-going check, sync, counters, log and config edits) in `useStoaState`, shared through `StoaProvider` and read with `useStoa()`. Components hold only form and view state.
+- `src/App.tsx`: picks the screen: a running timer takes the whole screen, otherwise the URL hash (`useHashRoute.ts`) picks a tab.
+- `src/screens/`: one component per screen (Today, Plan, Running, Stop, Log, SessionForm, Habits, Settings). `src/components/`: Nav, Header (with the sync badge), StillGoingDialog, Toast, HabitSelect.
+- `src/format.ts`: display helpers (names by id, active goals, datetime-local values).
+- `test/PlanScreen.test.tsx`: component check in jsdom, rendering a screen inside `StoaProvider` with seeded data.
 - `sw/sw.js`: service worker template; the Vite plugin in `vite.config.ts` fills in the built file list.
 
 ## Rules
