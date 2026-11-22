@@ -13,7 +13,7 @@ const tabOf = (range: string) => /^'([^']+)'/.exec(range)![1];
  * In-memory Drive and Sheets behind a fake fetch, speaking the few REST calls Stoa makes.
  * `data` fills an existing Stoa sheet (data rows; headers are added); without it the Drive is empty.
  */
-function fakeGoogle(data?: Partial<Record<Tab, Cell[][]>>, failWrites = false) {
+function fakeGoogle(data?: Partial<Record<Tab, Cell[][]>>, failWrites = false, failBatchUpdates = 0) {
   const files: { id: string; appProperties: Record<string, string> }[] = [];
   const tabs = new Map<string, Cell[][]>();
   const calls: string[] = [];
@@ -49,6 +49,7 @@ function fakeGoogle(data?: Partial<Record<Tab, Cell[][]>>, failWrites = false) {
       return json(200, { sheets: [...tabs.keys()].map((title, sheetId) => ({ properties: { sheetId, title } })) });
     }
     if (op === ":batchUpdate") {
+      if (failBatchUpdates-- > 0) return json(500, { error: { message: "backend error" } });
       const names = [...tabs.keys()];
       for (const r of body.requests) {
         if (r.addSheet) tabs.set(r.addSheet.properties.title, []);
@@ -142,6 +143,31 @@ describe("Stoa sheet", () => {
     expect(g.tabs.get("logs")![0]).toEqual([...TABS.logs]);
     expect(await g.api.open()).toBe(id);
     expect(g.files).toHaveLength(1);
+  });
+
+  it("leaves a new sheet with only the Stoa tabs, not Google's default tab", async () => {
+    const g = fakeGoogle();
+    await g.api.open();
+    expect([...g.tabs.keys()]).not.toContain("Sheet1");
+    expect([...g.tabs.keys()].sort()).toEqual(Object.keys(TABS).sort());
+  });
+
+  it("still removes the default tab when the first setup failed and a later open finishes it", async () => {
+    const g = fakeGoogle(undefined, false, 1);
+    await expect(g.api.open()).rejects.toThrow();
+    expect([...g.tabs.keys()]).toEqual(["Sheet1"]);
+    await g.api.open();
+    expect([...g.tabs.keys()].sort()).toEqual(Object.keys(TABS).sort());
+    expect(g.files).toHaveLength(1);
+  });
+
+  it("never deletes tabs from an existing sheet", async () => {
+    const g = fakeGoogle({});
+    g.tabs.set("Notes", [["mine"]]);
+    g.tabs.delete("plans");
+    await g.api.open();
+    expect(g.tabs.has("Notes")).toBe(true);
+    expect(g.tabs.has("plans")).toBe(true);
   });
 
   it("reports a refused token as a sign-in problem", async () => {

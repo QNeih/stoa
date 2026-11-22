@@ -93,7 +93,11 @@ export class SheetsApi {
     return id;
   }
 
-  /** Adds missing tabs with their header rows; a new spreadsheet also loses its default tab. */
+  /**
+   * Adds missing tabs with their header rows. A spreadsheet Stoa has just created, or one still
+   * without a single Stoa tab (an earlier setup that failed before its tabs were added), also loses
+   * Google's default tab. A sheet that has any Stoa tab is the user's and keeps all its tabs.
+   */
   private async ensureTabs(id: string, created: boolean): Promise<void> {
     const info = await this.call<{ sheets: { properties: { sheetId: number; title: string } }[] }>(
       "GET",
@@ -102,7 +106,8 @@ export class SheetsApi {
     const titles = new Set(info.sheets.map((s) => s.properties.title));
     const missing = (Object.keys(TABS) as Tab[]).filter((t) => !titles.has(t));
     if (!missing.length) return;
-    const extra = created ? info.sheets.filter((s) => !(s.properties.title in TABS)) : [];
+    const untouched = missing.length === Object.keys(TABS).length;
+    const extra = created || untouched ? info.sheets.filter((s) => !(s.properties.title in TABS)) : [];
     await this.call("POST", `${SHEETS}/${id}:batchUpdate`, {
       requests: [
         ...missing.map((title) => ({ addSheet: { properties: { title } } })),
