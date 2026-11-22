@@ -1,4 +1,4 @@
-// Data contract shared with the stoa-data repo and the check-in routine.
+// Data contract shared with the Stoa sheet (see TABS in sheets.ts) and the check-in routine.
 
 export interface Goal {
   id: string;
@@ -58,8 +58,11 @@ export interface CounterEntry {
 
 export type LogEntry = SessionEntry | CounterEntry;
 
-/** A log entry as kept on the phone: `day` is the local start date, the file it belongs to. */
-export type StoredEntry = LogEntry & { id?: number; day: string };
+/**
+ * A log entry as kept on the phone: `id` is the phone's storage key, `uid` the entry's row id
+ * in the sheet's `logs` tab, `day` the local start date it is filed under.
+ */
+export type StoredEntry = LogEntry & { id?: number; uid: string; day: string };
 
 export interface RunningTimer {
   habit: string;

@@ -1,7 +1,18 @@
-// Roll-up: push changed days to logs/, sync config.json, read today's plan.
+// Roll-up: rewrite the `logs` rows of changed days, sync the config tabs, read today's plan.
 import type { Config, LogEntry, Plan, StoredEntry } from "./types";
-import { GitHubError, type GitHub } from "./github";
-import { parseJsonl, toJsonl } from "./logs";
+import {
+  cellsText,
+  configFromRows,
+  configToRows,
+  entryFromRow,
+  entryToRow,
+  logOrder,
+  planFromRows,
+  rowCells,
+  type Cell,
+  type SheetsApi,
+  type Tables,
+} from "./sheets";
 
 export interface SyncStore {
   dirtyDays(): Promise<string[]>;
@@ -13,7 +24,7 @@ export interface SyncStore {
   setConfig(config: Config, dirty: boolean): Promise<void>;
   setPlan(plan: Plan | null): Promise<void>;
   hasEntries(): Promise<boolean>;
-  importEntries(entries: LogEntry[]): Promise<void>;
+  importEntries(entries: (LogEntry & { uid: string })[]): Promise<void>;
 }
 
 export interface RollUpResult {
@@ -23,76 +34,88 @@ export interface RollUpResult {
   errors: string[];
 }
 
-const configText = (c: Config) => JSON.stringify(c, null, 2) + "\n";
+const message = (e: unknown) => String(e instanceof Error ? e.message : e);
+const same = (a: Cell[][], b: Cell[][]) => JSON.stringify(a.map(cellsText)) === JSON.stringify(b.map(cellsText));
+const isEmpty = (c: Config) => !c.goals.length && !c.habits.length && !c.counters.length;
 
-async function putWithRetry(gh: GitHub, path: string, text: string, message: string): Promise<boolean> {
-  for (let attempt = 0; ; attempt++) {
-    const remote = await gh.get(path);
-    if (remote?.text === text) return false;
-    try {
-      await gh.put(path, text, remote?.sha, message);
-      return true;
-    } catch (e) {
-      // 409/422: the file changed between read and write; read the new sha once more.
-      const stale = e instanceof GitHubError && (e.status === 409 || e.status === 422);
-      if (!stale || attempt > 0) throw e;
+/** Replaces the rows of the dirty days with the phone's entries; returns the days whose rows changed. */
+async function pushDays(store: SyncStore, api: SheetsApi, sheetId: string, remote: Tables["logs"]): Promise<string[]> {
+  const days = await store.dirtyDays();
+  if (!days.length) return [];
+  // Unmark before reading so a change made during the push marks the day again.
+  for (const day of days) await store.unmarkDirty(day);
+  try {
+    const kept: Cell[][] = [];
+    const before = new Map<string, Cell[][]>();
+    for (const row of remote) {
+      const cells = rowCells("logs", row);
+      if (days.includes(row.day?.trim())) before.set(row.day.trim(), [...(before.get(row.day.trim()) ?? []), cells]);
+      else kept.push(cells);
     }
+    const changed: string[] = [];
+    const fresh: Cell[][] = [];
+    for (const day of days) {
+      const rows = (await store.entriesForDay(day)).map(entryToRow).sort(logOrder);
+      if (!same(rows, (before.get(day) ?? []).sort(logOrder))) changed.push(day);
+      fresh.push(...rows);
+    }
+    if (changed.length) await api.write(sheetId, { logs: [...kept, ...fresh].sort(logOrder) });
+    return changed;
+  } catch (e) {
+    for (const day of days) await store.markDirty(day);
+    throw e;
   }
 }
 
-export async function rollUp(store: SyncStore, gh: GitHub, today: string): Promise<RollUpResult> {
+/** Pushes a config edited on the phone, else takes the sheet's. An empty sheet never empties the phone. */
+async function syncConfig(store: SyncStore, api: SheetsApi, sheetId: string, remote: Tables): Promise<boolean> {
+  const local = await store.getConfig();
+  const remoteConfig = configFromRows(remote);
+  if (!(await store.isConfigDirty()) && !(isEmpty(remoteConfig) && !isEmpty(local))) {
+    await store.setConfig(remoteConfig, false);
+    return false;
+  }
+  await store.setConfig(local, false);
+  try {
+    const rows = configToRows(local);
+    const changed = (["goals", "habits", "counters"] as const).filter(
+      (t) => !same(rows[t], remote[t].map((r) => rowCells(t, r))),
+    );
+    if (!changed.length) return false;
+    await api.write(sheetId, Object.fromEntries(changed.map((t) => [t, rows[t]])));
+    return true;
+  } catch (e) {
+    await store.setConfig(local, true);
+    throw e;
+  }
+}
+
+export async function rollUp(store: SyncStore, api: SheetsApi, sheetId: string, today: string): Promise<RollUpResult> {
   const result: RollUpResult = { pushedDays: [], configPushed: false, plan: null, errors: [] };
+  const remote = await api.read(sheetId, ["logs", "goals", "habits", "counters", "plans", "plan_days"]);
 
-  // Unmark before reading so a change made during the push marks the day again.
-  for (const day of await store.dirtyDays()) {
-    await store.unmarkDirty(day);
-    try {
-      const text = toJsonl(await store.entriesForDay(day));
-      if (await putWithRetry(gh, `logs/${day}.jsonl`, text, `log ${day}`)) result.pushedDays.push(day);
-    } catch (e) {
-      await store.markDirty(day);
-      result.errors.push(String(e instanceof Error ? e.message : e));
-    }
+  try {
+    result.pushedDays = await pushDays(store, api, sheetId, remote.logs);
+  } catch (e) {
+    result.errors.push(message(e));
   }
 
   try {
-    if (await store.isConfigDirty()) {
-      const config = await store.getConfig();
-      await store.setConfig(config, false);
-      try {
-        result.configPushed = await putWithRetry(gh, "config.json", configText(config), "config from app");
-      } catch (e) {
-        await store.setConfig(config, true);
-        throw e;
-      }
-    } else {
-      const remote = await gh.get("config.json");
-      if (remote) await store.setConfig(JSON.parse(remote.text) as Config, false);
-    }
+    result.configPushed = await syncConfig(store, api, sheetId, remote);
   } catch (e) {
-    result.errors.push(String(e instanceof Error ? e.message : e));
+    result.errors.push(message(e));
   }
 
-  try {
-    const plan = await gh.get(`plans/${today}.json`);
-    result.plan = plan ? (JSON.parse(plan.text) as Plan) : null;
-    await store.setPlan(result.plan);
-  } catch (e) {
-    result.errors.push(String(e instanceof Error ? e.message : e));
-  }
-
+  result.plan = planFromRows(remote, today);
+  await store.setPlan(result.plan);
   return result;
 }
 
-/** Fill an empty phone from the data repo (new install or cleared storage). Returns entries imported. */
-export async function restore(store: SyncStore, gh: GitHub): Promise<number> {
+/** Fills an empty phone from the sheet's `logs` tab (new install or cleared storage). Returns entries imported. */
+export async function restore(store: SyncStore, api: SheetsApi, sheetId: string): Promise<number> {
   if (await store.hasEntries()) return 0;
-  const files = (await gh.list("logs")).filter((n) => /^\d{4}-\d{2}-\d{2}\.jsonl$/.test(n));
-  const entries: LogEntry[] = [];
-  for (const name of files) {
-    const file = await gh.get(`logs/${name}`);
-    if (file) entries.push(...parseJsonl(file.text));
-  }
+  const { logs } = await api.read(sheetId, ["logs"]);
+  const entries = logs.map(entryFromRow).filter((e) => e !== null);
   if (entries.length) await store.importEntries(entries);
   return entries.length;
 }

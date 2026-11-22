@@ -1,12 +1,12 @@
 import type { LogEntry, StoredEntry } from "./types";
 import { localDate } from "./time";
 
-/** The log file an entry belongs to: the local date it started. */
+/** The day an entry is filed under: the local date it started. */
 export function dayOf(e: LogEntry): string {
   return localDate(new Date(e.type === "session" ? e.start : e.at));
 }
 
-/** Strip phone-only fields so the file holds exactly the data contract. */
+/** Strips phone-only fields (storage key, row id, day), as in the JSON export. */
 export function toContract(e: StoredEntry | LogEntry): LogEntry {
   if (e.type === "session") {
     const { type, habit, task, start, end, note } = e;
@@ -14,23 +14,6 @@ export function toContract(e: StoredEntry | LogEntry): LogEntry {
   }
   const { type, counter, at, delta } = e;
   return { type, counter, at, delta };
-}
-
-const timeOf = (e: LogEntry) => (e.type === "session" ? e.start : e.at);
-
-/** One JSON object per line, in time order, ending with a newline (empty day: empty file). */
-export function toJsonl(entries: (StoredEntry | LogEntry)[]): string {
-  const sorted = entries.map(toContract).sort((a, b) => Date.parse(timeOf(a)) - Date.parse(timeOf(b)));
-  return sorted.map((e) => JSON.stringify(e)).join("\n") + (sorted.length ? "\n" : "");
-}
-
-export function parseJsonl(text: string): LogEntry[] {
-  return text
-    .split("\n")
-    .map((l) => l.trim())
-    .filter(Boolean)
-    .map((l) => JSON.parse(l) as LogEntry)
-    .filter((e) => e.type === "session" || e.type === "counter");
 }
 
 /** Lowercase slug for ids, unique against `taken` (adds -2, -3, ...). */

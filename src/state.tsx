@@ -1,9 +1,10 @@
 // App state and every action that changes it. Screens read and call these through useStoa().
 import { createContext, useContext, useEffect, useEffectEvent, useReducer, useRef, useState, type ReactNode } from "react";
-import type { Settings, Store, SyncStatus } from "./db";
+import type { Account, Store, SyncStatus } from "./db";
 import { activeGoals, counterName } from "./format";
-import { GitHub } from "./github";
+import { AuthError, forgetToken, getAccessToken } from "./googleAuth";
 import { slugify, toContract } from "./logs";
+import { ApiError, SheetsApi } from "./sheets";
 import { restore, rollUp } from "./sync";
 import { isoLocal, localDate } from "./time";
 import type { Config, Plan, RunningTimer, SessionEntry, StoredEntry } from "./types";
@@ -18,9 +19,10 @@ export interface StoaData {
   entries: StoredEntry[];
   timer: RunningTimer | null;
   plan: Plan | null;
-  settings: Settings;
+  /** The Google account to sync with; null when signed out. */
+  account: Account | null;
   syncStatus: SyncStatus | null;
-  /** Days plus config waiting to be written to the data repo. */
+  /** Days plus config waiting to be written to the sheet. */
   pending: number;
 }
 
@@ -30,17 +32,17 @@ export interface ToastMessage {
 }
 
 export async function loadData(store: Store): Promise<StoaData> {
-  const [config, entries, timer, plan, settings, syncStatus, dirtyDays, configDirty] = await Promise.all([
+  const [config, entries, timer, plan, account, syncStatus, dirtyDays, configDirty] = await Promise.all([
     store.getConfig(),
     store.allEntries(),
     store.getTimer(),
     store.getPlan(),
-    store.getSettings(),
+    store.getAccount(),
     store.getSyncStatus(),
     store.dirtyDays(),
     store.isConfigDirty(),
   ]);
-  return { config, entries, timer, plan, settings, syncStatus, pending: dirtyDays.length + (configDirty ? 1 : 0) };
+  return { config, entries, timer, plan, account, syncStatus, pending: dirtyDays.length + (configDirty ? 1 : 0) };
 }
 
 /** Saves a timer as a session that ends at `end`, at least one minute long. */
@@ -56,6 +58,10 @@ export function useStoaState(store: Store, initial: StoaData) {
   const dataRef = useRef(initial);
   const [syncing, setSyncing] = useState(false);
   const syncingRef = useRef(false);
+  /** Signed in, but the token expired and could not be renewed without the user. */
+  const [signInNeeded, setSignInNeeded] = useState(false);
+  /** The spreadsheet id once found this session. */
+  const sheetIdRef = useRef<string | null>(null);
   /** Set while the stop screen asks for a note; the session ends at this time. */
   const [stopEnd, setStopEnd] = useState<Date | null>(null);
   const [stillGoingOpen, setStillGoingOpen] = useState(false);
@@ -73,21 +79,44 @@ export function useStoaState(store: Store, initial: StoaData) {
     setToast({ text, undo });
   }
 
-  /** Roll-up to the data repo; quiet no-op without settings. */
+  /** The Sheets API with a token that renews itself without the user, failing with AuthError. */
+  function sheetsApi(email: string): SheetsApi {
+    return new SheetsApi(() => getAccessToken({ interactive: false, hint: email }));
+  }
+
+  async function openSheet(api: SheetsApi): Promise<string> {
+    sheetIdRef.current ??= await api.open();
+    return sheetIdRef.current;
+  }
+
+  /** Roll-up to the sheet; quiet no-op when signed out. */
   async function sync(): Promise<void> {
-    const { token, repo } = dataRef.current.settings;
-    if (!token || !repo || syncingRef.current) return;
+    const account = dataRef.current.account;
+    if (!account || syncingRef.current) return;
     syncingRef.current = true;
     setSyncing(true);
     let status: SyncStatus;
     try {
-      const r = await rollUp(store, new GitHub({ token, repo }), localDate(new Date()));
+      const api = sheetsApi(account.email);
+      const r = await rollUp(store, api, await openSheet(api), localDate(new Date()));
       status = r.errors.length
         ? { at: new Date().toISOString(), ok: false, message: r.errors[0] }
         : { at: new Date().toISOString(), ok: true, message: r.pushedDays.length ? `Wrote ${r.pushedDays.join(", ")}` : "Up to date" };
+      setSignInNeeded(false);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      status = { at: new Date().toISOString(), ok: false, message: /fetch/i.test(msg) ? "Offline, will retry" : msg };
+      if (e instanceof AuthError) {
+        forgetToken();
+        setSignInNeeded(true);
+      } else if (e instanceof ApiError && (e.status === 403 || e.status === 404)) {
+        // The sheet was deleted or is no longer shared with Stoa; find or create it again next time.
+        sheetIdRef.current = null;
+      }
+      status = {
+        at: new Date().toISOString(),
+        ok: false,
+        message: e instanceof AuthError ? "Sign in again" : /fetch/i.test(msg) ? "Offline, will retry" : msg,
+      };
     }
     await store.setSyncStatus(status);
     syncingRef.current = false;
@@ -216,21 +245,42 @@ export function useStoaState(store: Store, initial: StoaData) {
 
   // --- settings ---
 
-  async function connect(repo: string, token: string): Promise<void> {
-    if (!/^[\w.-]+\/[\w.-]+$/.test(repo)) return alert("Repository must look like owner/name.");
-    const settings = { repo, token };
-    await store.setSettings(settings);
-    // A phone without goals takes the repo's config instead of overwriting it.
-    const { config } = dataRef.current;
-    if (!config.goals.length) await store.setConfig(config, false);
+  /**
+   * Opens Google's popup (call it straight from a tap, or the browser blocks the popup), then finds or
+   * creates the sheet. An empty phone restores from it; otherwise every day on the phone is written to it.
+   */
+  async function signIn(): Promise<void> {
+    const hint = dataRef.current.account?.email;
     try {
-      const n = await restore(store, new GitHub(settings));
-      if (n) showToast(`Restored ${n} entries from the repo`);
+      await getAccessToken({ interactive: true, hint });
+      sheetIdRef.current = null;
+      const api = new SheetsApi(() => getAccessToken({ interactive: false }));
+      const email = await api.email();
+      const sheetId = await openSheet(api);
+      await store.setAccount({ email });
+      setSignInNeeded(false);
+      // A phone without goals takes the sheet's config instead of overwriting it.
+      const { config } = dataRef.current;
+      if (!config.goals.length) await store.setConfig(config, false);
+      const n = await restore(store, api, sheetId);
+      if (n) showToast(`Restored ${n} entries from the sheet`);
+      else await store.markAllDirty();
     } catch (e) {
-      alert(`Could not read the repo: ${e instanceof Error ? e.message : e}`);
+      alert(`Could not sign in: ${e instanceof Error ? e.message : e}`);
+      return;
+    } finally {
+      await reload();
     }
-    await reload();
     await sync();
+  }
+
+  /** Forgets the account and token; everything logged stays on the phone. */
+  async function signOut(): Promise<void> {
+    forgetToken();
+    sheetIdRef.current = null;
+    setSignInNeeded(false);
+    await store.setAccount(null);
+    await reload();
   }
 
   /** Downloads everything on this phone as one JSON file. */
@@ -274,6 +324,7 @@ export function useStoaState(store: Store, initial: StoaData) {
   return {
     ...data,
     syncing,
+    signInNeeded,
     stopEnd,
     stillGoingOpen,
     toast,
@@ -297,7 +348,8 @@ export function useStoaState(store: Store, initial: StoaData) {
     addGoal,
     setGoalArchived,
     moveGoal,
-    connect,
+    signIn,
+    signOut,
     exportAll,
   };
 }
