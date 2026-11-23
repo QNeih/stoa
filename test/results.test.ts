@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { autoDoneDays, doneResults, lastCheck, lastHabitCheck, minutesSince, minutesSinceLastCheck, standingCheck } from "../src/results";
+import { autoDoneDays, doneResults, lastCheck, lastHabitCheck, minutesSince, minutesSinceLastCheck, inDoneWindow, openResults, standingCheckByUid, standingChecks } from "../src/results";
 import type { Habit, LogEntry, Result, ResultCheck } from "../src/types";
 
 const s = (habit: string, start: string, end: string): LogEntry => ({
@@ -107,8 +107,37 @@ describe("done results", () => {
     expect(done[0]).toMatchObject({ ms: 35 * 60_000 });
   });
 
-  it("find the standing check to undo", () => {
-    expect(standingCheck(checks, "5k", "2026-11-22")?.uid).toBe("x");
-    expect(standingCheck(checks, "5k", "2026-11-21")).toBeNull();
+  it("list several checks of one result on a day in the order they were made", () => {
+    const more = [check("m2", "2026-11-22", "2026-11-22T21:00:00"), check("m1", "2026-11-22", "2026-11-22T19:00:00")];
+    const done = doneResults([manual], more, []);
+    expect(done.map((d) => d.type === "manual" && d.check.uid)).toEqual(["m1", "m2"]);
+  });
+
+  it("find the standing check to undo by its uid", () => {
+    expect(standingCheckByUid(checks, "x")?.uid).toBe("x");
+    expect(standingCheckByUid(checks, "y")).toBeNull();
+    expect(standingChecks(checks, "5k").map((c) => c.uid)).toEqual(["x"]);
+  });
+});
+
+describe("open results", () => {
+  const today = "2026-11-23";
+
+  it("keep a manual result open until it has a standing check, whatever the day", () => {
+    expect(openResults([manual], [], entries, today)).toEqual([manual]);
+    expect(openResults([manual], [check("x", "2026-10-01", "2026-10-01T20:00:00")], entries, today)).toEqual([]);
+    expect(openResults([manual], [check("x", "2026-11-22", "2026-11-22T20:00:00", "2026-11-23T08:00:00+01:00")], entries, today)).toEqual([manual]);
+  });
+
+  it("keep an automatic result open until it reached its minimum today", () => {
+    expect(openResults([auto], [], entries, "2026-11-22")).toEqual([]);
+    expect(openResults([auto], [], entries, today)).toEqual([auto]);
+  });
+});
+
+describe("done window", () => {
+  it("lists entries up to 7 days after their day", () => {
+    expect(inDoneWindow("2026-11-16", "2026-11-23")).toBe(true);
+    expect(inDoneWindow("2026-11-15", "2026-11-23")).toBe(false);
   });
 });

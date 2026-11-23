@@ -1,6 +1,6 @@
 // Results of sub-goals: automatic results derived from session time, the time behind a manual
 // check, and the done list. Everything here is derived on read, so edits to sessions show at once.
-import { parseLocalDate, splitByDay } from "./time";
+import { daysBetween, parseLocalDate, splitByDay } from "./time";
 import type { Habit, LogEntry, Result, ResultCheck } from "./types";
 
 /** Session time per local day on one sub-goal, split at local midnight. */
@@ -70,9 +70,32 @@ export function minutesSinceLastCheck(results: Result[], habit: Habit, checks: R
   return minutesSince(entries, habit, lastHabitCheck(checks, results, habit.id, at)?.checked_at ?? null, at);
 }
 
-/** The standing check of a manual result on `day`, if any (the one an uncheck removes). */
-export function standingCheck<C extends ResultCheck>(checks: C[], result: string, day: string): C | null {
-  return checks.find((c) => c.result === result && c.day === day && !c.removed_at) ?? null;
+/** The standing checks of a manual result (not undone), in the order given. */
+export function standingChecks<C extends ResultCheck>(checks: C[], result: string): C[] {
+  return checks.filter((c) => c.result === result && !c.removed_at);
+}
+
+/** The standing check with row id `uid`, if any (the one an uncheck removes). */
+export function standingCheckByUid<C extends ResultCheck>(checks: C[], uid: string): C | null {
+  return checks.find((c) => c.uid === uid && !c.removed_at) ?? null;
+}
+
+/** How many days after its day a done entry stays in the done list. */
+export const DONE_DAYS = 7;
+
+/** Whether a done entry on `day` is still listed on `today`. */
+export function inDoneWindow(day: string, today: string): boolean {
+  return daysBetween(day, today) <= DONE_DAYS;
+}
+
+/**
+ * Results still open on `today`: a manual result until it has a standing check (of any day), an
+ * automatic result until it reached its minimum today.
+ */
+export function openResults(results: Result[], checks: ResultCheck[], entries: LogEntry[], today: string): Result[] {
+  return results.filter((r) =>
+    r.type === "manual" ? !standingChecks(checks, r.id).length : !autoDoneDays(r, entries).includes(today),
+  );
 }
 
 /** One done result on one day. */
@@ -82,7 +105,7 @@ export type DoneResult =
 
 /**
  * Every done result: standing checks of manual results plus the derived days of automatic results.
- * Sorted by day, then in the order of `results`. Checks of unknown or automatic results are left out.
+ * Sorted by day, then in the order of `results`, then by check time. Checks of unknown or automatic results are left out.
  */
 export function doneResults(results: Result[], checks: ResultCheck[], entries: LogEntry[]): DoneResult[] {
   const order = new Map(results.map((r, i) => [r.id, i]));
@@ -96,7 +119,10 @@ export function doneResults(results: Result[], checks: ResultCheck[], entries: L
     const byDay = msByDay(entries, r.habit);
     for (const day of autoDoneDays(r, entries)) out.push({ type: "auto", result: r.id, day, ms: byDay.get(day)! });
   }
-  return out.sort((a, b) => a.day.localeCompare(b.day) || order.get(a.result)! - order.get(b.result)!);
+  const checkedAt = (d: DoneResult) => (d.type === "manual" ? d.check.checked_at : "");
+  return out.sort(
+    (a, b) => a.day.localeCompare(b.day) || order.get(a.result)! - order.get(b.result)! || checkedAt(a).localeCompare(checkedAt(b)),
+  );
 }
 
 /** Session time on the days an automatic result was done, and how many days that was. */

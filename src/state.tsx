@@ -5,7 +5,7 @@ import type { PaletteKey } from "./palette";
 import { AuthError, forgetToken, getAccessToken, loadGis, renewOnTap } from "./googleAuth";
 import { toContract } from "./logs";
 import { ApiError, SheetsApi } from "./sheets";
-import { minutesSinceLastCheck, standingCheck } from "./results";
+import { minutesSinceLastCheck, standingCheckByUid } from "./results";
 import { restore, rollUp } from "./sync";
 import { isoLocal, localDate, validateStart } from "./time";
 import { addedItem, moveItem, switchTimer, timerSession, todayItems, withItems } from "./today";
@@ -272,8 +272,8 @@ export function useStoaState(store: Store, initial: StoaData) {
   // --- results ---
 
   /**
-   * Checks a manual result as done today, with an optional note and the sub-goal time since the last
-   * check of any of its results (the running timer counts up to now). A result checked today stays as is.
+   * Records a check of a manual result now, with an optional note and the sub-goal time since the last
+   * check of any of its results (the running timer counts up to now). Each call adds its own check.
    */
   async function checkResult(resultId: string, note = ""): Promise<void> {
     renewForTap();
@@ -283,7 +283,6 @@ export function useStoaState(store: Store, initial: StoaData) {
     if (!result || result.type !== "manual" || !habit) return;
     const now = new Date();
     const day = localDate(now);
-    if (standingCheck(checks, resultId, day)) return;
     const tracked = timer ? [...entries, timerSession(timer, now)] : entries;
     await store.addCheck({
       result: resultId,
@@ -297,10 +296,10 @@ export function useStoaState(store: Store, initial: StoaData) {
     void sync();
   }
 
-  /** Undoes a manual result's check on `day`: the check stays, with the time it was undone. */
-  async function uncheckResult(resultId: string, day: string): Promise<void> {
+  /** Undoes the check with row id `uid`: the check stays, with the time it was undone. */
+  async function uncheckResult(uid: string): Promise<void> {
     renewForTap();
-    const check = standingCheck(dataRef.current.checks, resultId, day);
+    const check = standingCheckByUid(dataRef.current.checks, uid);
     if (check?.id === undefined) return;
     await store.removeCheck(check.id, isoLocal(new Date()));
     await reload();
