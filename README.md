@@ -5,12 +5,12 @@ It is an installable offline web app (PWA): React and TypeScript, IndexedDB, and
 
 ## Use
 
-- **Today**: time today, done list, time this week per big goal, days since time was last spent, result counters (+1).
+- **Today**: time today, done list, time this week per big goal, days since time was last spent.
 - **Plan**: today's plan from the Stoa sheet, with planned and spent minutes per item and the time spent off the plan. Any habit can also start without a plan.
 - **Running**: only the timer and the task. One timer at a time. Forgot to start? Change its start time (up to 24 hours back), or set "Started at" under Plan. It survives closing the app; after 4 hours a reopened app asks "still going?".
 - **Stop**: an optional one-line note, which goes into the done list.
-- **Log**: add a past session, fix it or delete it, or delete a counter tap.
-- **Habits**: goals (ranked, archived, never deleted), habits (one field plus a goal, can move to another goal) and counters.
+- **Log**: add a past session, fix it or delete it.
+- **Habits**: goals (ranked, archived, never deleted) and their sub-goals (one field plus a goal, can move to another goal).
 - **Settings**: Sign in with Google (or the signed-in email and Sign out), Sync now, and Export (one JSON file as a backup).
 
 ## Data
@@ -35,22 +35,36 @@ It belongs to a Google Cloud project with the Drive and Sheets APIs enabled and 
 On first sign-in Stoa creates the sheet with a Drive app property (`stoa=sheet`), so a new phone finds it again.
 Every tab starts with a header row; rows are read by header name. Values are written raw, so times stay text.
 
-- `goals`: id, name, rank, archived. `habits`: id, goal, name, archived. `counters`: id, goal, name.
-  The app reads them, and writes them back after a change on the phone. An empty sheet takes the phone's config.
-- `plans`: date, habit, task, minutes (one row per item). `plan_days`: date, time_budget_min, note.
-  Written by the daily check-in; the app only reads them. Without a `plan_days` row the budget is the planned total.
-- `logs`: id, day, type, habit, task, start, end, note, counter, delta. Written by the app: a roll-up replaces
-  all rows of each changed day with the phone's copy. `id` is made on the phone; `day` is the local start date.
-  A counter tap keeps its time in `start`. Sessions are stored unsplit; the stats split them at local midnight.
+A newer app version adds its new columns to the end of an existing tab's header row; old rows stay as they are.
 
-A phone with no entries restores them from `logs` on sign-in; a phone with entries writes all its days.
+- `goals`: id, name, rank, archived, color (one of eight palette keys; empty picks one from the id).
+  `habits` (sub-goals): id, goal, name, archived, created (local date; empty means older than any session).
+  The app reads them, and writes them back after a change on the phone. An empty sheet takes the phone's config.
+- `results`: id, habit, name, type (`manual` or `auto`), min_minutes (auto only; empty means 30), archived.
+  Created by the daily check-in, never by the app; the app only renames and archives them, merged by id.
+  An automatic result is done on every day with at least min_minutes of sessions on its sub-goal; that is
+  worked out on the phone and never stored.
+- `result_checks`: id, result, day, checked_at, note, minutes_since_last, removed_at. Written by the app when a
+  manual result is checked; unchecking fills `removed_at` and keeps the row. A roll-up replaces the rows of each
+  changed day, like `logs`. `minutes_since_last` is the sub-goal time since the result's previous check.
+- `plans`: date, habit, task, minutes (one row per item; row order is the card order). `plan_days`: date,
+  time_budget_min, note. Written by the daily check-in. The app may reorder a day's rows and add a sub-goal
+  at 0 minutes; it then rewrites that day's rows. Without a `plan_days` row the budget is the planned total.
+- `logs`: id, day, type, habit, task, start, end, note, counter, delta. Written by the app: a roll-up replaces
+  the session rows of each changed day with the phone's copy. `id` is made on the phone; `day` is the local
+  start date. Sessions are stored unsplit; the stats split them at local midnight.
+- Counters are retired: the `counters` tab and the `counter` and `delta` columns stay for old rows, which the
+  app neither reads nor removes.
+
+A phone with no sessions restores them from `logs` on sign-in, and a phone with no result checks restores them
+from `result_checks`; a phone that had sessions writes all its days.
 
 ## Develop
 
 ```sh
 npm install
 npm run dev       # http://localhost:5173
-npm test          # unit tests for time, stats, log helpers and roll-up (fake Sheets API), plus a Plan screen check
+npm test          # unit tests for time, stats, results, palette, log helpers and roll-up (fake Sheets API), plus a Plan screen check
 npm run build     # typecheck and build to dist/
 npm run preview   # serve dist/ at http://localhost:4173 (service worker on)
 npm run icons     # redraw the PNG icons in public/
