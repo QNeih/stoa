@@ -4,13 +4,13 @@ import type { Config, LogEntry, Plan } from "../src/types";
 
 const config: Config = {
   goals: [
-    { id: "career", name: "Career", rank: 1, archived: false },
-    { id: "family", name: "Family", rank: 2, archived: false },
-    { id: "old", name: "Old", rank: 3, archived: true },
+    { id: "career", name: "Career", rank: 1, archived: false, color: "sky" },
+    { id: "family", name: "Family", rank: 2, archived: false, color: "rose" },
+    { id: "old", name: "Old", rank: 3, archived: true, color: "" },
   ],
   habits: [
-    { id: "job-search", goal: "career", name: "Job search", archived: false },
-    { id: "partner", goal: "family", name: "Time together", archived: false },
+    { id: "job-search", goal: "career", name: "Job search", archived: false, created: "" },
+    { id: "partner", goal: "family", name: "Time together", archived: false, created: "" },
   ],
 };
 

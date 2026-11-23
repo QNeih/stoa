@@ -2,6 +2,7 @@
 import { createContext, useContext, useEffect, useEffectEvent, useReducer, useRef, useState, type ReactNode } from "react";
 import type { Account, Store, SyncStatus } from "./db";
 import { activeGoals } from "./format";
+import { nextColor } from "./palette";
 import { AuthError, forgetToken, getAccessToken, loadGis, renewOnTap } from "./googleAuth";
 import { slugify, toContract } from "./logs";
 import { ApiError, SheetsApi } from "./sheets";
@@ -253,7 +254,7 @@ export function useStoaState(store: Store, initial: StoaData) {
   const newId = (c: Config, name: string) => slugify(name, [...c.goals, ...c.habits].map((x) => x.id));
 
   const addHabit = (name: string, goal: string) =>
-    editConfig((c) => ({ ...c, habits: [...c.habits, { id: newId(c, name), goal, name, archived: false }] }));
+    editConfig((c) => ({ ...c, habits: [...c.habits, { id: newId(c, name), goal, name, archived: false, created: localDate(new Date()) }] }));
   const setHabitGoal = (id: string, goal: string) =>
     editConfig((c) => ({ ...c, habits: c.habits.map((x) => (x.id === id ? { ...x, goal } : x)) }));
   const setHabitArchived = (id: string, archived: boolean) =>
@@ -261,7 +262,7 @@ export function useStoaState(store: Store, initial: StoaData) {
   const addGoal = (name: string) =>
     editConfig((c) => {
       const rank = Math.max(0, ...c.goals.map((g) => g.rank)) + 1;
-      return { ...c, goals: [...c.goals, { id: newId(c, name), name, rank, archived: false }] };
+      return { ...c, goals: [...c.goals, { id: newId(c, name), name, rank, archived: false, color: nextColor(c.goals) }] };
     });
   const setGoalArchived = (id: string, archived: boolean) =>
     editConfig((c) => ({ ...c, goals: c.goals.map((g) => (g.id === id ? { ...g, archived } : g)) }));

@@ -1,16 +1,18 @@
 // The user's "Stoa" spreadsheet in their own Drive, through the Drive and Sheets REST APIs,
 // and the mapping between its rows and the app's types.
 import { AuthError } from "./googleAuth";
+import { isPaletteKey } from "./palette";
 import type { Config, LogEntry, Plan, StoredEntry } from "./types";
 
 /**
- * Tabs and their header rows. Rows are read by header name, written in this order.
+ * Tabs and their header rows. Rows are read by header name, written in this order. A column added
+ * to a tab goes at the end of its list, so opening an older sheet only appends it to the header row.
  * Counters are retired: the `counters` tab and the `counter` and `delta` columns of `logs` stay for
  * old rows, which the app neither reads nor removes.
  */
 export const TABS = {
-  goals: ["id", "name", "rank", "archived"],
-  habits: ["id", "goal", "name", "archived"],
+  goals: ["id", "name", "rank", "archived", "color"],
+  habits: ["id", "goal", "name", "archived", "created"],
   counters: ["id", "goal", "name"],
   plans: ["date", "habit", "task", "minutes"],
   plan_days: ["date", "time_budget_min", "note"],
@@ -39,6 +41,9 @@ export class ApiError extends Error {
 
 /** Quoted A1 range: `'logs'!A1`. */
 const range = (tab: Tab, a1 = "") => `'${tab}'${a1 ? `!${a1}` : ""}`;
+
+/** Column letters for a zero-based column index: 0 is A, 26 is AA. */
+const column = (i: number): string => (i >= 26 ? column(Math.floor(i / 26) - 1) : "") + String.fromCharCode(65 + (i % 26));
 
 export class SheetsApi {
   constructor(
@@ -98,7 +103,8 @@ export class SheetsApi {
   }
 
   /**
-   * Adds missing tabs with their header rows. A spreadsheet Stoa has just created, or one still
+   * Adds missing tabs with their header rows, and appends columns added since to the header row of
+   * existing tabs (their data rows stay as they are). A spreadsheet Stoa has just created, or one still
    * without a single Stoa tab (an earlier setup that failed before its tabs were added), also loses
    * Google's default tab. A sheet that has any Stoa tab is the user's and keeps all its tabs.
    */
@@ -108,9 +114,12 @@ export class SheetsApi {
       `${SHEETS}/${id}?fields=sheets.properties(sheetId,title)`,
     );
     const titles = new Set(info.sheets.map((s) => s.properties.title));
-    const missing = (Object.keys(TABS) as Tab[]).filter((t) => !titles.has(t));
+    const all = Object.keys(TABS) as Tab[];
+    const present = all.filter((t) => titles.has(t));
+    if (present.length) await this.extendHeaders(id, present);
+    const missing = all.filter((t) => !titles.has(t));
     if (!missing.length) return;
-    const untouched = missing.length === Object.keys(TABS).length;
+    const untouched = !present.length;
     const extra = created || untouched ? info.sheets.filter((s) => !(s.properties.title in TABS)) : [];
     await this.call("POST", `${SHEETS}/${id}:batchUpdate`, {
       requests: [
@@ -122,6 +131,18 @@ export class SheetsApi {
       valueInputOption: "RAW",
       data: missing.map((t) => ({ range: range(t, "A1"), values: [[...TABS[t]]] })),
     });
+  }
+
+  /** Writes the columns a tab's header row lacks after its last header cell. */
+  private async extendHeaders(id: string, tabs: Tab[]): Promise<void> {
+    const qs = tabs.map((t) => `ranges=${encodeURIComponent(range(t, "1:1"))}`).join("&");
+    const r = await this.call<{ valueRanges: { values?: unknown[][] }[] }>("GET", `${SHEETS}/${id}/values:batchGet?${qs}`);
+    const data = tabs.flatMap((t, i) => {
+      const header = (r.valueRanges[i]?.values?.[0] ?? []).map((h) => String(h).trim());
+      const add = TABS[t].filter((k) => !header.includes(k));
+      return add.length ? [{ range: range(t, `${column(header.length)}1`), values: [add] }] : [];
+    });
+    if (data.length) await this.call("POST", `${SHEETS}/${id}/values:batchUpdate`, { valueInputOption: "RAW", data });
   }
 
   /** The data rows of the given tabs, keyed by header name; blank rows are skipped. */
@@ -159,6 +180,8 @@ export class SheetsApi {
 // --- mapping between rows and the app's types ---
 
 const isTrue = (s: string | undefined) => /^true$/i.test((s ?? "").trim());
+/** The YYYY-MM-DD start of a cell, or "" when it holds no date. */
+const isoDay = (s: string | undefined) => /^\d{4}-\d{2}-\d{2}/.exec((s ?? "").trim())?.[0] ?? "";
 const num = (s: string | undefined, fallback = 0) => {
   const n = Number((s ?? "").trim());
   return (s ?? "").trim() !== "" && Number.isFinite(n) ? n : fallback;
@@ -169,15 +192,22 @@ export const newUid = () => crypto.randomUUID();
 
 export function configFromRows(t: Pick<Tables, "goals" | "habits">): Config {
   return {
-    goals: t.goals.filter((r) => r.id).map((r) => ({ id: r.id, name: r.name ?? "", rank: num(r.rank), archived: isTrue(r.archived) })),
-    habits: t.habits.filter((r) => r.id).map((r) => ({ id: r.id, goal: r.goal ?? "", name: r.name ?? "", archived: isTrue(r.archived) })),
+    goals: t.goals
+      .filter((r) => r.id)
+      .map((r) => {
+        const color = (r.color ?? "").trim();
+        return { id: r.id, name: r.name ?? "", rank: num(r.rank), archived: isTrue(r.archived), color: isPaletteKey(color) ? color : "" };
+      }),
+    habits: t.habits
+      .filter((r) => r.id)
+      .map((r) => ({ id: r.id, goal: r.goal ?? "", name: r.name ?? "", archived: isTrue(r.archived), created: isoDay(r.created) })),
   };
 }
 
 export function configToRows(c: Config): Record<"goals" | "habits", Cell[][]> {
   return {
-    goals: c.goals.map((g) => [g.id, g.name, g.rank, g.archived]),
-    habits: c.habits.map((h) => [h.id, h.goal, h.name, h.archived]),
+    goals: c.goals.map((g) => [g.id, g.name, g.rank, g.archived, g.color]),
+    habits: c.habits.map((h) => [h.id, h.goal, h.name, h.archived, h.created]),
   };
 }
 

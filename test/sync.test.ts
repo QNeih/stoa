@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { AuthError } from "../src/googleAuth";
 import { dayOf } from "../src/logs";
-import { SheetsApi, TABS, type Cell, type Tab } from "../src/sheets";
+import { SheetsApi, TABS, configFromRows, type Cell, type Tab } from "../src/sheets";
 import { restore, rollUp, type SyncStore } from "../src/sync";
 import type { Config, LogEntry, Plan, StoredEntry } from "../src/types";
 
@@ -59,7 +59,8 @@ function fakeGoogle(data?: Partial<Record<Tab, Cell[][]>>, failWrites = false, f
     }
     if (op === "/values:batchGet") {
       const valueRanges = u.searchParams.getAll("ranges").map((r) => {
-        const rows = (tabs.get(tabOf(r)) ?? []).map((row) => {
+        const all = tabs.get(tabOf(r)) ?? [];
+        const rows = (r.endsWith("!1:1") ? all.slice(0, 1) : all).map((row) => {
           const text = row.map(shown);
           while (text.length && text.at(-1) === "") text.pop();
           return text;
@@ -72,9 +73,13 @@ function fakeGoogle(data?: Partial<Record<Tab, Cell[][]>>, failWrites = false, f
     if (op === "/values:batchUpdate") {
       expect(body.valueInputOption).toBe("RAW");
       for (const d of body.data) {
-        expect(d.range).toMatch(/!A1$/);
+        // Writes start in row 1, at column A or (for header columns) further right.
+        const col = /!([A-Z]+)1$/.exec(d.range)![1];
+        const from = [...col].reduce((n, ch) => n * 26 + ch.charCodeAt(0) - 64, 0) - 1;
         const rows = tabs.get(tabOf(d.range))!;
-        d.values.forEach((row: Cell[], i: number) => (rows[i] = row));
+        d.values.forEach((row: Cell[], i: number) => {
+          rows[i] = [...Array.from({ length: from }, (_, j) => rows[i]?.[j] ?? ""), ...row];
+        });
       }
       return json(200, {});
     }
@@ -170,6 +175,26 @@ describe("Stoa sheet", () => {
     expect(g.tabs.has("plans")).toBe(true);
   });
 
+  it("appends columns added since to the header rows of an older sheet, keeping its rows", async () => {
+    const g = fakeGoogle({});
+    g.tabs.set("goals", [["id", "name", "rank", "archived"], ["g", "G", 1, false]]);
+    g.tabs.set("habits", [["id", "goal", "name", "archived", "mine"], ["h", "g", "H", false, "x"]]);
+    await g.api.open();
+    expect(g.tabs.get("goals")).toEqual([[...TABS.goals], ["g", "G", 1, false]]);
+    expect(g.tabs.get("habits")).toEqual([["id", "goal", "name", "archived", "mine", "created"], ["h", "g", "H", false, "x"]]);
+    const { goals, habits } = await g.api.read("sheet-1", ["goals", "habits"]);
+    expect(configFromRows({ goals, habits })).toEqual({
+      goals: [{ id: "g", name: "G", rank: 1, archived: false, color: "" }],
+      habits: [{ id: "h", goal: "g", name: "H", archived: false, created: "" }],
+    });
+  });
+
+  it("writes no header cells when every tab is up to date", async () => {
+    const g = fakeGoogle({});
+    await g.api.open();
+    expect(g.calls.filter((c) => c.includes("values:batchUpdate"))).toEqual([]);
+  });
+
   it("reports a refused token as a sign-in problem", async () => {
     const refusing = new SheetsApi(async () => "token", (async () => new Response("{}", { status: 401 })) as unknown as typeof fetch);
     await expect(refusing.open()).rejects.toBeInstanceOf(AuthError);
@@ -179,7 +204,8 @@ describe("Stoa sheet", () => {
 describe("roll-up", () => {
   it("rewrites the session rows of changed days, keeps old counter rows, pulls config and reads today's plan", async () => {
     const g = fakeGoogle({
-      goals: [["g", "G", 1, false]],
+      goals: [["g", "G", 1, false, "sky"]],
+      habits: [["gym", "g", "Gym", false, "2026-11-01"], ["old", "g", "Old", true, ""], ["bad", "g", "Bad", false, "soon"]],
       plans: [
         ["2026-11-22", "gym", "Legs", 45],
         ["2026-11-23", "gym", "Arms", 30],
@@ -203,7 +229,14 @@ describe("roll-up", () => {
       [...sessionRow, "", ""],
       ["tap", "2026-11-22", "counter", "", "", "2026-11-22T12:00:00+01:00", "", "", "apps", "1"],
     ]);
-    expect(m.config()).toEqual({ goals: [{ id: "g", name: "G", rank: 1, archived: false }], habits: [] });
+    expect(m.config()).toEqual({
+      goals: [{ id: "g", name: "G", rank: 1, archived: false, color: "sky" }],
+      habits: [
+        { id: "gym", goal: "g", name: "Gym", archived: false, created: "2026-11-01" },
+        { id: "old", goal: "g", name: "Old", archived: true, created: "" },
+        { id: "bad", goal: "g", name: "Bad", archived: false, created: "" },
+      ],
+    });
     expect(m.plan()).toEqual({ date: "2026-11-22", time_budget_min: 60, items: [{ habit: "gym", task: "Legs", minutes: 45 }], note: "Easy" });
     expect(await m.store.dirtyDays()).toEqual([]);
   });
@@ -218,23 +251,23 @@ describe("roll-up", () => {
   });
 
   it("pushes a config edited on the phone", async () => {
-    const local: Config = { goals: [], habits: [{ id: "h", goal: "g", name: "H", archived: false }] };
-    const g = fakeGoogle({ habits: [["old", "g", "Old", true]] });
+    const local: Config = { goals: [], habits: [{ id: "h", goal: "g", name: "H", archived: false, created: "2026-11-20" }] };
+    const g = fakeGoogle({ habits: [["old", "g", "Old", true, ""]] });
     const m = memStore(local, true);
     const r = await rollUp(m.store, g.api, await g.api.open(), "2026-11-22");
     expect(r.configPushed).toBe(true);
-    expect(g.rows("habits")).toEqual([["h", "g", "H", "FALSE"]]);
+    expect(g.rows("habits")).toEqual([["h", "g", "H", "FALSE", "2026-11-20"]]);
     expect(await m.store.isConfigDirty()).toBe(false);
   });
 
   it("gives an empty sheet the phone's config instead of emptying the phone", async () => {
-    const local: Config = { goals: [{ id: "g", name: "G", rank: 1, archived: false }], habits: [] };
+    const local: Config = { goals: [{ id: "g", name: "G", rank: 1, archived: false, color: "mint" }], habits: [] };
     const g = fakeGoogle({});
     const m = memStore(local);
     const r = await rollUp(m.store, g.api, await g.api.open(), "2026-11-22");
     expect(r.configPushed).toBe(true);
     expect(m.config()).toEqual(local);
-    expect(g.rows("goals")).toEqual([["g", "G", "1", "FALSE"]]);
+    expect(g.rows("goals")).toEqual([["g", "G", "1", "FALSE", "mint"]]);
     expect(m.plan()).toBeNull();
   });
 

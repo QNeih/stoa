@@ -2,6 +2,7 @@
 // config, plan, running timer, the signed-in account and the days not yet rolled up.
 // The Google access token is never stored here.
 import type { Config, LogEntry, Plan, RunningTimer, StoredEntry } from "./types";
+import { isPaletteKey } from "./palette";
 import type { SyncStore } from "./sync";
 import { dayOf } from "./logs";
 import { newUid } from "./sheets";
@@ -23,7 +24,10 @@ export interface SyncStatus {
 
 /** A config as stored by any app version, with fields older versions lacked filled in. */
 function normalizeConfig(c: Partial<Config> | undefined): Config {
-  return { goals: c?.goals ?? [], habits: c?.habits ?? [] };
+  return {
+    goals: (c?.goals ?? []).map((g) => ({ ...g, color: g.color && isPaletteKey(g.color) ? g.color : "" })),
+    habits: (c?.habits ?? []).map((h) => ({ ...h, created: h.created ?? "" })),
+  };
 }
 
 function req<T>(r: IDBRequest<T>): Promise<T> {

@@ -22,11 +22,11 @@ const session = (habit: string, task: string, start: string, end: string): Sessi
 
 const data: StoaData = {
   config: {
-    goals: [{ id: "craft", name: "Craft", rank: 1, archived: false }],
+    goals: [{ id: "craft", name: "Craft", rank: 1, archived: false, color: "sage" }],
     habits: [
-      { id: "read", goal: "craft", name: "Read", archived: false },
-      { id: "write", goal: "craft", name: "Write", archived: false },
-      { id: "walk", goal: "craft", name: "Walk", archived: false },
+      { id: "read", goal: "craft", name: "Read", archived: false, created: "" },
+      { id: "write", goal: "craft", name: "Write", archived: false, created: "" },
+      { id: "walk", goal: "craft", name: "Walk", archived: false, created: "" },
     ],
   },
   entries: [
