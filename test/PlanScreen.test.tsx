@@ -28,12 +28,14 @@ const data: StoaData = {
       { id: "write", goal: "craft", name: "Write", archived: false, created: "" },
       { id: "walk", goal: "craft", name: "Walk", archived: false, created: "" },
     ],
+    results: [],
   },
   entries: [
     session("read", "Chapter 3", "09:00", "09:45"),
     session("write", "", "10:00", "10:40"),
     session("walk", "", "11:00", "11:20"),
   ],
+  checks: [],
   timer: null,
   plan: {
     date: "2026-11-22",

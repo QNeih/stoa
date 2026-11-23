@@ -2,7 +2,7 @@
 // and the mapping between its rows and the app's types.
 import { AuthError } from "./googleAuth";
 import { isPaletteKey } from "./palette";
-import type { Config, LogEntry, Plan, StoredEntry } from "./types";
+import type { Config, LogEntry, Plan, Result, ResultCheck, StoredEntry } from "./types";
 
 /**
  * Tabs and their header rows. Rows are read by header name, written in this order. A column added
@@ -13,6 +13,8 @@ import type { Config, LogEntry, Plan, StoredEntry } from "./types";
 export const TABS = {
   goals: ["id", "name", "rank", "archived", "color"],
   habits: ["id", "goal", "name", "archived", "created"],
+  results: ["id", "habit", "name", "type", "min_minutes", "archived"],
+  result_checks: ["id", "result", "day", "checked_at", "note", "minutes_since_last", "removed_at"],
   counters: ["id", "goal", "name"],
   plans: ["date", "habit", "task", "minutes"],
   plan_days: ["date", "time_budget_min", "note"],
@@ -187,10 +189,48 @@ const num = (s: string | undefined, fallback = 0) => {
   return (s ?? "").trim() !== "" && Number.isFinite(n) ? n : fallback;
 };
 
-/** A row id for a new log entry. */
+/** A row id for a new log entry or result check. */
 export const newUid = () => crypto.randomUUID();
 
-export function configFromRows(t: Pick<Tables, "goals" | "habits">): Config {
+/** Minutes a day needs for an automatic result whose `min_minutes` cell is empty. */
+export const DEFAULT_MIN_MINUTES = 30;
+
+/** The `results` rows with an id; any type other than `auto` counts as manual. */
+export function resultsFromRows(rows: Row[]): Result[] {
+  return rows
+    .filter((r) => r.id?.trim())
+    .map((r) => ({
+      id: r.id.trim(),
+      habit: r.habit ?? "",
+      name: r.name ?? "",
+      type: (r.type ?? "").trim().toLowerCase() === "auto" ? "auto" : "manual",
+      min_minutes: num(r.min_minutes, DEFAULT_MIN_MINUTES),
+      archived: isTrue(r.archived),
+    }));
+}
+
+/**
+ * The sheet's results with the phone's names and archived flags applied by id. Rows the check-in
+ * added since the phone last read them stay; results the sheet no longer has are dropped, since only
+ * the check-in creates or removes results. Other cells keep their text.
+ */
+export function mergeResults(remote: Row[], local: Result[]): { rows: Cell[][]; results: Result[] } {
+  const mine = new Map(local.map((r) => [r.id, r]));
+  const rows = remote.map((r) => {
+    const cells = rowCells("results", r);
+    const l = mine.get(r.id?.trim());
+    if (l && l.name !== (r.name ?? "")) cells[TABS.results.indexOf("name")] = l.name;
+    if (l && l.archived !== isTrue(r.archived)) cells[TABS.results.indexOf("archived")] = l.archived;
+    return cells;
+  });
+  const results = resultsFromRows(remote).map((r) => {
+    const l = mine.get(r.id);
+    return l ? { ...r, name: l.name, archived: l.archived } : r;
+  });
+  return { rows, results };
+}
+
+export function configFromRows(t: Pick<Tables, "goals" | "habits" | "results">): Config {
   return {
     goals: t.goals
       .filter((r) => r.id)
@@ -201,6 +241,7 @@ export function configFromRows(t: Pick<Tables, "goals" | "habits">): Config {
     habits: t.habits
       .filter((r) => r.id)
       .map((r) => ({ id: r.id, goal: r.goal ?? "", name: r.name ?? "", archived: isTrue(r.archived), created: isoDay(r.created) })),
+    results: resultsFromRows(t.results),
   };
 }
 
@@ -237,6 +278,27 @@ export function entryFromRow(r: Row): (LogEntry & { uid: string }) | null {
   return { uid, type: "session", habit: r.habit ?? "", task: r.task ?? "", start: r.start ?? "", end: r.end ?? "", note: r.note ?? "" };
 }
 
+/** A result check as a `result_checks` row. */
+export function checkToRow(c: ResultCheck): Cell[] {
+  return [c.uid, c.result, c.day, c.checked_at, c.note, c.minutes_since_last, c.removed_at];
+}
+
+/** A `result_checks` row as a check (a new row id when the row has none); null without a result or day. */
+export function checkFromRow(r: Row): ResultCheck | null {
+  const result = r.result?.trim() ?? "";
+  const day = isoDay(r.day);
+  if (!result || !day) return null;
+  return {
+    uid: r.id?.trim() || newUid(),
+    result,
+    day,
+    checked_at: r.checked_at ?? "",
+    note: r.note ?? "",
+    minutes_since_last: num(r.minutes_since_last),
+    removed_at: r.removed_at ?? "",
+  };
+}
+
 /** A row in header order as the text Sheets would show, without trailing blanks, for comparing. */
 export function cellsText(cells: Cell[]): string[] {
   const text = cells.map((c) => (typeof c === "boolean" ? (c ? "TRUE" : "FALSE") : String(c)));
@@ -249,3 +311,7 @@ export const rowCells = (tab: Tab, r: Row): Cell[] => TABS[tab].map((k) => r[k] 
 /** Sort key for `logs` rows: day, then start time. */
 export const logOrder = (a: Cell[], b: Cell[]) =>
   String(a[1]).localeCompare(String(b[1])) || Date.parse(String(a[5])) - Date.parse(String(b[5])) || 0;
+
+/** Sort key for `result_checks` rows: day, then check time. */
+export const checkOrder = (a: Cell[], b: Cell[]) =>
+  String(a[2]).localeCompare(String(b[2])) || Date.parse(String(a[3])) - Date.parse(String(b[3])) || 0;

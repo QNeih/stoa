@@ -8,7 +8,7 @@ import { slugify, toContract } from "./logs";
 import { ApiError, SheetsApi } from "./sheets";
 import { restore, rollUp } from "./sync";
 import { isoLocal, localDate, validateStart } from "./time";
-import type { Config, Plan, RunningTimer, SessionEntry, StoredEntry } from "./types";
+import type { Config, Plan, RunningTimer, SessionEntry, StoredCheck, StoredEntry } from "./types";
 
 /** After this long a reopened app asks whether the timer is still going. */
 const STILL_GOING_MS = 4 * 3600_000;
@@ -18,6 +18,7 @@ const TOAST_MS = 4000;
 export interface StoaData {
   config: Config;
   entries: StoredEntry[];
+  checks: StoredCheck[];
   timer: RunningTimer | null;
   plan: Plan | null;
   /** The Google account to sync with; null when signed out. */
@@ -33,9 +34,10 @@ export interface ToastMessage {
 }
 
 export async function loadData(store: Store): Promise<StoaData> {
-  const [config, entries, timer, plan, account, syncStatus, dirtyDays, configDirty] = await Promise.all([
+  const [config, entries, checks, timer, plan, account, syncStatus, dirtyDays, configDirty] = await Promise.all([
     store.getConfig(),
     store.allEntries(),
+    store.allChecks(),
     store.getTimer(),
     store.getPlan(),
     store.getAccount(),
@@ -43,7 +45,7 @@ export async function loadData(store: Store): Promise<StoaData> {
     store.dirtyDays(),
     store.isConfigDirty(),
   ]);
-  return { config, entries, timer, plan, account, syncStatus, pending: dirtyDays.length + (configDirty ? 1 : 0) };
+  return { config, entries, checks, timer, plan, account, syncStatus, pending: dirtyDays.length + (configDirty ? 1 : 0) };
 }
 
 /** Saves a timer as a session that ends at `end`, at least one minute long. */
@@ -304,9 +306,12 @@ export function useStoaState(store: Store, initial: StoaData) {
       // A phone without goals takes the sheet's config instead of overwriting it.
       const { config } = dataRef.current;
       if (!config.goals.length) await store.setConfig(config, false);
-      const n = await restore(store, api, sheetId);
-      if (n) showToast(`Restored ${n} entries from the sheet`);
-      else await store.markAllDirty();
+      const restored = await restore(store, api, sheetId);
+      if (restored.entries || restored.checks) {
+        showToast(`Restored ${restored.entries} entries and ${restored.checks} result checks from the sheet`);
+      }
+      // A phone that already had sessions writes all its days to the sheet.
+      if (!restored.entries) await store.markAllDirty();
     } catch (e) {
       alert(`Could not sign in: ${e instanceof Error ? e.message : e}`);
       return;
@@ -329,7 +334,14 @@ export function useStoaState(store: Store, initial: StoaData) {
   function exportAll(): void {
     const d = dataRef.current;
     const json = JSON.stringify(
-      { exported_at: isoLocal(new Date()), config: d.config, logs: d.entries.map(toContract), running_timer: d.timer, plan: d.plan },
+      {
+        exported_at: isoLocal(new Date()),
+        config: d.config,
+        logs: d.entries.map(toContract),
+        result_checks: d.checks.map(({ id: _, ...c }) => c),
+        running_timer: d.timer,
+        plan: d.plan,
+      },
       null,
       2,
     );

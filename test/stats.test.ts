@@ -12,6 +12,7 @@ const config: Config = {
     { id: "job-search", goal: "career", name: "Job search", archived: false, created: "" },
     { id: "partner", goal: "family", name: "Time together", archived: false, created: "" },
   ],
+  results: [],
 };
 
 const s = (habit: string, start: string, end: string): LogEntry => ({
