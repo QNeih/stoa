@@ -51,9 +51,23 @@ export function lastCheck(checks: ResultCheck[], result: string, before: Date): 
   return last;
 }
 
-/** `minutes_since_last` for a check of `result` made at `at`: sub-goal time since its last standing check. */
-export function minutesSinceLastCheck(result: Result, habit: Habit, checks: ResultCheck[], entries: LogEntry[], at: Date): number {
-  return minutesSince(entries, habit, lastCheck(checks, result.id, at)?.checked_at ?? null, at);
+/** The latest standing check made before `before` of any result on sub-goal `habit`, or null when there is none. */
+export function lastHabitCheck(checks: ResultCheck[], results: Result[], habit: string, before: Date): ResultCheck | null {
+  let last: ResultCheck | null = null;
+  for (const r of results) {
+    if (r.habit !== habit) continue;
+    const c = lastCheck(checks, r.id, before);
+    if (c && (!last || new Date(c.checked_at) > new Date(last.checked_at))) last = c;
+  }
+  return last;
+}
+
+/**
+ * `minutes_since_last` for a check made at `at` of a result on `habit`: sub-goal time since the last
+ * standing check of any of its results, or since the sub-goal began for the first.
+ */
+export function minutesSinceLastCheck(results: Result[], habit: Habit, checks: ResultCheck[], entries: LogEntry[], at: Date): number {
+  return minutesSince(entries, habit, lastHabitCheck(checks, results, habit.id, at)?.checked_at ?? null, at);
 }
 
 /** The standing check of a manual result on `day`, if any (the one an uncheck removes). */

@@ -88,7 +88,7 @@ export interface ResultCheck {
   day: string;
   checked_at: string;
   note: string;
-  /** Minutes tracked on the result's sub-goal since its previous check (or since the sub-goal began). */
+  /** Minutes tracked on the result's sub-goal since the previous check of any of its results (or since the sub-goal began). */
   minutes_since_last: number;
   /** When the check was undone; "" while it stands. */
   removed_at: string;

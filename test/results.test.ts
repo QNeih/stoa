@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { autoDoneDays, doneResults, lastCheck, minutesSince, minutesSinceLastCheck, standingCheck } from "../src/results";
+import { autoDoneDays, doneResults, lastCheck, lastHabitCheck, minutesSince, minutesSinceLastCheck, standingCheck } from "../src/results";
 import type { Habit, LogEntry, Result, ResultCheck } from "../src/types";
 
 const s = (habit: string, start: string, end: string): LogEntry => ({
@@ -71,8 +71,21 @@ describe("minutes since the last check", () => {
       check("c", "2026-11-22", "2026-11-22T13:00:00"),
     ];
     expect(lastCheck(checks, "5k", now)?.uid).toBe("a");
-    expect(minutesSinceLastCheck(manual, run, checks, entries, now)).toBe(15 + 40 + 10);
-    expect(minutesSinceLastCheck(manual, run, [], entries, now)).toBe(20 + 15 + 40 + 10);
+    expect(minutesSinceLastCheck([manual, auto], run, checks, entries, now)).toBe(15 + 40 + 10);
+    expect(minutesSinceLastCheck([manual, auto], run, [], entries, now)).toBe(20 + 15 + 40 + 10);
+  });
+
+  it("count from the last check of any result on the sub-goal, and only that sub-goal", () => {
+    const pb: Result = { ...manual, id: "pb", name: "Personal best" };
+    const book: Result = { ...manual, id: "book", habit: "read", name: "Finished a book" };
+    const checks = [
+      check("a", "2026-11-20", "2026-11-20T09:00:00"),
+      { ...check("p", "2026-11-21", "2026-11-21T08:00:00"), result: "pb" },
+      { ...check("b", "2026-11-22", "2026-11-22T06:00:00"), result: "book" },
+    ];
+    const results = [manual, pb, book];
+    expect(lastHabitCheck(checks, results, "run", now)?.uid).toBe("p");
+    expect(minutesSinceLastCheck(results, run, checks, entries, now)).toBe(40 + 10);
   });
 });
 

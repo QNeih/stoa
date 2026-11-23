@@ -48,7 +48,8 @@ A newer app version adds its new columns to the end of an existing tab's header 
   worked out on the phone and never stored.
 - `result_checks`: id, result, day, checked_at, note, minutes_since_last, removed_at. Written by the app when a
   manual result is checked; unchecking fills `removed_at` and keeps the row. A roll-up replaces the rows of each
-  changed day, like `logs`. `minutes_since_last` is the sub-goal time since the result's previous check.
+  changed day, like `logs`. `minutes_since_last` is the sub-goal time since the previous check of any of its results
+  (or since the sub-goal was created, for its first check).
 - `plans`: date, habit, task, minutes (one row per item; row order is the card order). `plan_days`: date,
   time_budget_min, note. Written by the daily check-in. The app may reorder a day's rows and add a sub-goal
   at 0 minutes; it then rewrites that day's rows. Without a `plan_days` row the budget is the planned total.
