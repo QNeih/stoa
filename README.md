@@ -10,7 +10,8 @@ It is an installable offline web app (PWA): React and TypeScript, IndexedDB, and
   Pause ends the session; a note can be added later in Log. The running card stands out and counts today's time on its sub-goal.
   Forgot to start? Change the running timer's start (up to 24 hours back). The timer survives closing the app; after 4 hours a
   reopened app asks "still going?", where an earlier end can be set. "+ Add" puts another sub-goal on today's list and starts it.
-- **Time** and **Results**: coming next.
+- **Time**: stacked bar chart of time per week, month or year by goal (a range shows once the first session is before the current week, month or year). The all-time total sits above it; tap a bar for its minutes per goal.
+- **Results**: coming next.
 - **Goals**: goals (ranked, archived, never deleted) and their sub-goals (one field plus a goal, can move to another goal). Goal stats are coming next.
 - **Log**: add a past session, fix it (note included) or delete it.
 - **Settings** (the gear at the top): Sign in with Google (or the signed-in email and Sign out), Sync now, and Export (one JSON file as a backup).
@@ -66,7 +67,7 @@ from `result_checks`; a phone that had sessions writes all its days.
 ```sh
 npm install
 npm run dev       # http://localhost:5173
-npm test          # unit tests for time, stats, results, Today, palette, log helpers and roll-up (fake Sheets API), plus a Today screen check
+npm test          # unit tests for time, stats, results, Today, palette, log helpers and roll-up (fake Sheets API), plus Today and Time screen checks
 npm run build     # typecheck and build to dist/
 npm run preview   # serve dist/ at http://localhost:4173 (service worker on)
 npm run icons     # redraw the PNG icons in public/

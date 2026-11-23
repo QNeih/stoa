@@ -145,3 +145,16 @@ button.add { width: 100%; margin: 8px 0; border-style: dashed; color: var(--mute
   padding: 10px 14px; border-radius: 12px; background: var(--text); color: var(--bg);
 }
 .toast .link { color: var(--bg); }
+
+/* Time: range buttons, stacked chart, legend, readout. */
+.time-total { font-size: 1.6rem; margin: 8px 0; }
+.range-buttons { display: flex; gap: 8px; }
+.range-buttons button { background: none; border-color: transparent; }
+.range-buttons button.on { border-color: var(--text); font-weight: 700; }
+.time-chart { width: 100%; height: auto; display: block; }
+.time-chart .bar { cursor: pointer; outline-offset: -2px; }
+.legend { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 0.85rem; }
+.legend .swatch { display: inline-block; width: 12px; height: 12px; margin-right: 6px; vertical-align: -1px; border: 1px solid var(--text); }
+.readout { min-height: 3.5rem; margin: 8px 0; }
+.readout ul { margin: 4px 0 0; padding-left: 18px; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
