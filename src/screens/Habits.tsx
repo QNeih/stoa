@@ -26,8 +26,8 @@ function GoalSelect({ goals, ...props }: { goals: Goal[] } & ComponentProps<"sel
   );
 }
 
-/** Goals (ranked, archived, never deleted) and their habits. */
-export function HabitsScreen() {
+/** Goals (ranked, archived, never deleted) and their habits (sub-goals). */
+export function HabitsScreen({ title }: { title: string }) {
   const stoa = useStoa();
   const { config: c } = stoa;
   const goals = activeGoals(c);
@@ -45,7 +45,8 @@ export function HabitsScreen() {
 
   return (
     <div>
-      <Header title="Habits" />
+      <Header title={title} />
+      <p className="muted">Goal stats are coming next.</p>
       {goals.length > 0 && (
         <form className="card stack" onSubmit={addHabit}>
           <h2>Add a habit</h2>

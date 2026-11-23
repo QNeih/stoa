@@ -8,7 +8,8 @@ import { slugify, toContract } from "./logs";
 import { ApiError, SheetsApi } from "./sheets";
 import { restore, rollUp } from "./sync";
 import { isoLocal, localDate, validateStart } from "./time";
-import type { Config, Plan, RunningTimer, SessionEntry, StoredCheck, StoredEntry } from "./types";
+import { addedItem, moveItem, switchTimer, timerSession, todayItems, withItems } from "./today";
+import type { Config, Plan, PlanItem, RunningTimer, SessionEntry, StoredCheck, StoredEntry } from "./types";
 
 /** After this long a reopened app asks whether the timer is still going. */
 const STILL_GOING_MS = 4 * 3600_000;
@@ -49,13 +50,6 @@ export async function loadData(store: Store): Promise<StoaData> {
   return { config, entries, checks, timer, plan, account, syncStatus, pending: dirtyDays.length + (configDirty ? 1 : 0) + (planDirty ? 1 : 0) };
 }
 
-/** Saves a timer as a session that ends at `end`, at least one minute long. */
-async function saveTimerAsSession(store: Store, t: RunningTimer, end: Date, note: string): Promise<void> {
-  const start = new Date(t.start);
-  if (end <= start) end = new Date(start.getTime() + 60_000);
-  await store.addEntry({ type: "session", habit: t.habit, task: t.task, start: t.start, end: isoLocal(end), note: note.trim() });
-}
-
 /** End of the latest saved session, or null when there is none. */
 function latestSessionEnd(entries: StoredEntry[]): Date | null {
   let latest: Date | null = null;
@@ -77,8 +71,6 @@ export function useStoaState(store: Store, initial: StoaData) {
   const [signInNeeded, setSignInNeeded] = useState(false);
   /** The spreadsheet id once found this session. */
   const sheetIdRef = useRef<string | null>(null);
-  /** Set while the stop screen asks for a note; the session ends at this time. */
-  const [stopEnd, setStopEnd] = useState<Date | null>(null);
   const [stillGoingOpen, setStillGoingOpen] = useState(false);
   const [toast, setToast] = useState<ToastMessage | null>(null);
   // Bumped when the app comes back to the foreground, so time-based numbers are recomputed.
@@ -172,11 +164,12 @@ export function useStoaState(store: Store, initial: StoaData) {
       const problem = validateStart(startAt, now, notBefore);
       if (problem) return problem;
     }
-    // One timer at a time: starting another stops the first.
-    if (running) await saveTimerAsSession(store, running, start, "");
-    await store.setTimer({ habit, task: task.trim(), start: isoLocal(start) });
+    // One timer at a time: starting another ends the first as a session.
+    const next = switchTimer(running, { habit, task }, start);
+    if (next.session) await store.addEntry(next.session);
+    await store.setTimer(next.timer);
     await reload();
-    location.hash = "#/today";
+    if (next.session) void sync();
     return null;
   }
 
@@ -191,27 +184,25 @@ export function useStoaState(store: Store, initial: StoaData) {
     return null;
   }
 
-  async function stopTimer(note: string): Promise<void> {
+  /** Ends the running timer as a session at `end` (now by default); a note can be added later in Log. */
+  async function pauseTimer(end = new Date()): Promise<void> {
     renewForTap();
     const running = dataRef.current.timer;
     if (!running) return;
-    await saveTimerAsSession(store, running, stopEnd ?? new Date(), note);
+    await store.addEntry(timerSession(running, end));
     await store.setTimer(null);
     await reload();
-    setStopEnd(null);
-    location.hash = "#/today";
     void sync();
   }
 
   async function discardTimer(): Promise<void> {
     await store.setTimer(null);
     await reload();
-    setStopEnd(null);
   }
 
   const checkStillGoing = useEffectEvent(() => {
     const t = dataRef.current.timer;
-    if (!t || stillGoingOpen || stopEnd) return;
+    if (!t || stillGoingOpen) return;
     const since = new Date(t.checked ?? t.start).getTime();
     if (Date.now() - since >= STILL_GOING_MS) setStillGoingOpen(true);
   });
@@ -223,11 +214,44 @@ export function useStoaState(store: Store, initial: StoaData) {
     setStillGoingOpen(false);
   }
 
-  /** Answers "still going?" with an end time: the stop screen opens with it, capped at now. */
-  function endStillGoing(end: Date): void {
+  /** Answers "still going?" with an end time: the session is saved with it, capped at now. */
+  async function endStillGoing(end: Date): Promise<void> {
     setStillGoingOpen(false);
     const now = new Date();
-    setStopEnd(end > now ? now : end);
+    await pauseTimer(end > now ? now : end);
+  }
+
+  // --- today's plan ---
+
+  /**
+   * Replaces today's plan items (a stale plan becomes today's) and marks the plan for the next roll-up.
+   * The screen shows the new order at once, before the store has it, so a dropped card does not jump back.
+   */
+  async function writeTodayItems(items: PlanItem[]): Promise<void> {
+    const plan = withItems(dataRef.current.plan, localDate(new Date()), items);
+    dataRef.current = { ...dataRef.current, plan };
+    setData(dataRef.current);
+    await store.setPlan(plan, true);
+    await reload();
+  }
+
+  /** Moves today's card at `from` to `to`, which rewrites the day's plan rows on the next roll-up. */
+  async function moveTodayItem(from: number, to: number): Promise<void> {
+    if (from === to) return;
+    renewForTap();
+    const items = todayItems(dataRef.current.plan, localDate(new Date()));
+    await writeTodayItems(moveItem(items, from, to));
+    void sync();
+  }
+
+  /** Adds a sub-goal to today's list at 0 minutes and starts its timer. */
+  async function addAndStart(habit: string): Promise<void> {
+    renewForTap();
+    const items = todayItems(dataRef.current.plan, localDate(new Date()));
+    const item = addedItem(habit);
+    await writeTodayItems([...items, item]);
+    await startTimer(item.habit, item.task);
+    void sync();
   }
 
   // --- log ---
@@ -382,19 +406,18 @@ export function useStoaState(store: Store, initial: StoaData) {
     ...data,
     syncing,
     signInNeeded,
-    stopEnd,
     stillGoingOpen,
     toast,
     dismissToast: () => setToast(null),
     sync: syncNow,
     startTimer,
     setTimerStart,
-    requestStop: () => setStopEnd(new Date()),
-    cancelStop: () => setStopEnd(null),
-    stopTimer,
+    pauseTimer: () => pauseTimer(),
     discardTimer,
     confirmStillGoing,
     endStillGoing,
+    moveTodayItem,
+    addAndStart,
     saveSession,
     deleteEntry,
     addHabit,

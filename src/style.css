@@ -35,18 +35,19 @@ body { min-height: 100dvh; -webkit-tap-highlight-color: transparent; }
 .shell { min-height: 100dvh; display: flex; flex-direction: column; }
 main { flex: 1; padding: 0 16px calc(84px + env(safe-area-inset-bottom)); max-width: 640px; width: 100%; margin: 0 auto; }
 
-header.top { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 12px; padding: 20px 0 8px; }
+header.top { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 12px; padding: 14px 0 8px; }
 header.top h1 { margin: 0; font-size: 1.6rem; }
 .sync-badge { margin-left: auto; font-size: 0.75rem; color: var(--muted); }
 .sync-badge.warn { color: var(--danger); }
+.gear {
+  display: inline-flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px;
+  margin-right: -10px; font-size: 1.3rem; color: var(--muted); text-decoration: none;
+}
 
 h2 { font-size: 1rem; margin: 20px 0 8px; color: var(--muted); font-weight: 600; }
 .card h2 { margin-top: 0; color: var(--text); }
 section { margin-bottom: 8px; }
 .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px; margin: 12px 0; }
-.hero { text-align: center; }
-.hero .big { font-size: 2.6rem; font-weight: 700; letter-spacing: -0.02em; }
-.hero .button { margin-top: 12px; }
 
 .muted { color: var(--muted); }
 .small { font-size: 0.85rem; }
@@ -57,7 +58,6 @@ section { margin-bottom: 8px; }
 .list li { padding: 12px 14px; border-top: 1px solid var(--line); }
 .list li:first-child { border-top: 0; }
 .list li.tap { cursor: pointer; }
-.list li.done strong { text-decoration: line-through; color: var(--muted); }
 .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .actions { display: flex; align-items: center; gap: 8px; }
 
@@ -71,7 +71,6 @@ button:disabled { opacity: 0.4; }
 .danger { color: var(--danger); }
 .link { background: none; border: 0; color: var(--muted); text-decoration: underline; min-height: 36px; padding: 4px 8px; }
 .icon { min-width: 44px; padding: 0; }
-.plus { min-width: 64px; font-weight: 700; }
 main > .button { width: 100%; margin: 8px 0; }
 
 input, select {
@@ -90,14 +89,49 @@ nav.tabs {
 nav.tabs a { flex: 1; text-align: center; padding: 14px 0; color: var(--muted); text-decoration: none; font-size: 0.85rem; }
 nav.tabs a.active { color: var(--text); font-weight: 700; box-shadow: inset 0 3px 0 var(--stone); }
 
-.running {
-  min-height: 100dvh; display: flex; flex-direction: column; justify-content: center; align-items: stretch;
-  gap: 16px; padding: 24px; max-width: 520px; margin: 0 auto; text-align: center;
+/* Today: plan cards. A card's size never changes; the running card stands out by fill, border and shadow. */
+.plan-list { list-style: none; margin: 12px 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.plan-card {
+  position: relative; display: flex; align-items: center; gap: 6px; min-height: 72px; padding: 10px 10px 10px 2px;
+  background: var(--card); border: 1px solid var(--line); border-left: 6px solid var(--goal); border-radius: 14px;
 }
-.running .task { font-size: 1.5rem; font-weight: 600; }
-.running .clock { font-size: 4rem; font-weight: 700; font-variant-numeric: tabular-nums; margin: 24px 0; }
-.running .stop { min-height: 64px; font-size: 1.3rem; }
-.running label.stack { text-align: left; font-size: 1rem; color: var(--text); }
+.plan-card.running {
+  background: color-mix(in srgb, var(--goal) 24%, var(--card)); border-color: var(--goal);
+  box-shadow: 0 6px 18px color-mix(in srgb, var(--goal) 40%, transparent);
+}
+.plan-list.dragging .plan-card { transition: transform 150ms ease; }
+.plan-list.dragging .plan-card.lifted { transition: none; z-index: 1; box-shadow: 0 10px 28px rgb(0 0 0 / 0.22); }
+.grip {
+  flex: none; min-width: 36px; min-height: 48px; padding: 0; border: 0; background: none; color: var(--muted);
+  touch-action: none; user-select: none; cursor: grab;
+}
+.dragging .grip { cursor: grabbing; }
+.plan-card .what { flex: 1; min-width: 0; }
+/* One line each, so the clock of a running card never makes it taller. */
+.plan-card .goal-name, .plan-card .sub-goal { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.plan-card .goal-name { font-size: 0.8rem; color: var(--muted); }
+.plan-card .sub-goal { font-weight: 600; }
+.plan-card .task { font-weight: 400; color: var(--muted); }
+.plan-card .today-time { font-size: 0.85rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.plan-card .clock { font-size: 1.5rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.play {
+  flex: none; min-width: 48px; min-height: 48px; padding: 0; border-radius: 50%;
+  background: var(--goal); border-color: var(--goal); color: #1f2933;
+}
+.play.pause { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+.timer-start { display: flex; align-items: center; gap: 4px; margin: 0; }
+button.add { width: 100%; margin: 8px 0; border-style: dashed; color: var(--muted); }
+
+.sheet-backdrop { position: fixed; inset: 0; z-index: 10; display: flex; align-items: flex-end; background: rgb(0 0 0 / 0.45); }
+.sheet {
+  width: 100%; max-width: 640px; max-height: 80dvh; overflow: auto; margin: 0 auto;
+  padding: 16px 16px calc(16px + env(safe-area-inset-bottom)); border-radius: 16px 16px 0 0; background: var(--card);
+}
+.sheet h2 { margin-top: 0; color: var(--text); }
+.sheet h3 { margin: 14px 0 0; font-weight: 600; }
+.sheet .pick { width: 100%; justify-content: flex-start; gap: 10px; margin-top: 8px; }
+.sheet .link { width: 100%; margin-top: 12px; }
+.dot { flex: none; width: 12px; height: 12px; border-radius: 50%; background: var(--goal); }
 
 .modal { border: 0; border-radius: 16px; padding: 20px; width: min(92vw, 420px); background: var(--card); color: var(--text); }
 .modal::backdrop { background: rgb(0 0 0 / 0.5); }

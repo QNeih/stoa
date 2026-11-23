@@ -20,7 +20,7 @@ export function StillGoingDialog({ timer }: { timer: RunningTimer }) {
   const saveWithEnd = () => {
     const at = new Date(end);
     if (isNaN(at.getTime()) || at <= start) return alert("The end must be after the start.");
-    endStillGoing(at);
+    void endStillGoing(at);
   };
 
   return (
@@ -32,7 +32,7 @@ export function StillGoingDialog({ timer }: { timer: RunningTimer }) {
       <button className="primary" onClick={() => void confirmStillGoing()}>
         Yes, still going
       </button>
-      <button onClick={() => endStillGoing(new Date())}>Stop now</button>
+      <button onClick={() => void endStillGoing(new Date())}>Stop now</button>
       <label>
         It ended at
         <input type="datetime-local" value={end} onChange={(e) => setEnd(e.target.value)} />
