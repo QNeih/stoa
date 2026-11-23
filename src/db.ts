@@ -1,13 +1,15 @@
-// Phone storage in IndexedDB: log entries plus a key-value store for
+// Phone storage in IndexedDB: log entries, result checks, and a key-value store for
 // config, plan, running timer, the signed-in account and the days not yet rolled up.
 // The Google access token is never stored here.
-import type { Config, LogEntry, Plan, RunningTimer, StoredEntry } from "./types";
+import type { Config, LogEntry, Plan, ResultCheck, RunningTimer, StoredCheck, StoredEntry } from "./types";
+import { isPaletteKey } from "./palette";
 import type { SyncStore } from "./sync";
 import { dayOf } from "./logs";
 import { newUid } from "./sheets";
 
 const DB_NAME = "stoa";
 const ENTRIES = "entries";
+const CHECKS = "checks";
 const KV = "kv";
 
 /** The Google account the phone syncs with; the token stays in memory (googleAuth.ts). */
@@ -21,7 +23,14 @@ export interface SyncStatus {
   message: string;
 }
 
-const EMPTY_CONFIG: Config = { goals: [], habits: [], counters: [] };
+/** A config as stored by any app version, with fields older versions lacked filled in. */
+function normalizeConfig(c: Partial<Config> | undefined): Config {
+  return {
+    goals: (c?.goals ?? []).map((g) => ({ ...g, color: g.color && isPaletteKey(g.color) ? g.color : "" })),
+    habits: (c?.habits ?? []).map((h) => ({ ...h, created: h.created ?? "" })),
+    results: c?.results ?? [],
+  };
+}
 
 function req<T>(r: IDBRequest<T>): Promise<T> {
   return new Promise((resolve, reject) => {
@@ -42,7 +51,7 @@ export class Store implements SyncStore {
   private constructor(private db: IDBDatabase) {}
 
   static async open(): Promise<Store> {
-    const open = indexedDB.open(DB_NAME, 2);
+    const open = indexedDB.open(DB_NAME, 3);
     open.onupgradeneeded = (event) => {
       const db = open.result;
       const tx = open.transaction!;
@@ -50,16 +59,20 @@ export class Store implements SyncStore {
         db.createObjectStore(ENTRIES, { keyPath: "id", autoIncrement: true }).createIndex("day", "day");
         db.createObjectStore(KV);
       }
-      if (event.oldVersion < 2) {
-        // Version 2 syncs to a Google Sheet: every entry gets its row id, and the GitHub token goes.
+      // Version 2 syncs to a Google Sheet, so the GitHub token goes.
+      if (event.oldVersion < 2) tx.objectStore(KV).delete("settings");
+      if (event.oldVersion < 3) db.createObjectStore(CHECKS, { keyPath: "id", autoIncrement: true }).createIndex("day", "day");
+      if (event.oldVersion >= 1 && event.oldVersion < 3) {
+        // Every entry gets its row id (version 2); counter taps are retired and go (version 3).
+        // Taps already in the sheet stay there.
         const cursor = tx.objectStore(ENTRIES).openCursor();
         cursor.onsuccess = () => {
           const c = cursor.result;
           if (!c) return;
-          if (!c.value.uid) c.update({ ...c.value, uid: newUid() });
+          if (c.value.type !== "session") c.delete();
+          else if (!c.value.uid) c.update({ ...c.value, uid: newUid() });
           c.continue();
         };
-        tx.objectStore(KV).delete("settings");
       }
     };
     const store = new Store(await req(open));
@@ -87,10 +100,17 @@ export class Store implements SyncStore {
   getTimer = () => this.kvGet<RunningTimer | null>("timer", null);
   setTimer = (t: RunningTimer | null) => this.kvSet("timer", t);
   getPlan = () => this.kvGet<Plan | null>("plan", null);
-  setPlan = (p: Plan | null) => this.kvSet("plan", p);
+  isPlanDirty = () => this.kvGet<boolean>("planDirty", false);
+
+  /** Stores the plan; `dirty` when the phone changed it (reorder, an added sub-goal), so a roll-up writes it. */
+  async setPlan(p: Plan | null, dirty = false): Promise<void> {
+    await this.kvSet("plan", p);
+    await this.kvSet("planDirty", dirty);
+  }
+
   getSyncStatus = () => this.kvGet<SyncStatus | null>("syncStatus", null);
   setSyncStatus = (s: SyncStatus) => this.kvSet("syncStatus", s);
-  getConfig = () => this.kvGet<Config>("config", EMPTY_CONFIG);
+  getConfig = async () => normalizeConfig(await this.kvGet<Partial<Config> | undefined>("config", undefined));
   isConfigDirty = () => this.kvGet<boolean>("configDirty", false);
 
   async setConfig(config: Config, dirty: boolean): Promise<void> {
@@ -120,6 +140,18 @@ export class Store implements SyncStore {
     return req(this.db.transaction(ENTRIES).objectStore(ENTRIES).index("day").getAll(day));
   }
 
+  /** Entries filed under the days from `from` to `to`, both included (YYYY-MM-DD). */
+  async entriesBetween(from: string, to: string): Promise<StoredEntry[]> {
+    return req(this.db.transaction(ENTRIES).objectStore(ENTRIES).index("day").getAll(IDBKeyRange.bound(from, to)));
+  }
+
+  /** The latest day before `day` that has an entry, or null when there is none. */
+  async latestDayBefore(day: string): Promise<string | null> {
+    const index = this.db.transaction(ENTRIES).objectStore(ENTRIES).index("day");
+    const cursor = await req(index.openKeyCursor(IDBKeyRange.upperBound(day, true), "prev"));
+    return cursor ? String(cursor.key) : null;
+  }
+
   async hasEntries(): Promise<boolean> {
     return (await req(this.db.transaction(ENTRIES).objectStore(ENTRIES).count())) > 0;
   }
@@ -143,17 +175,31 @@ export class Store implements SyncStore {
     await this.markDirty(day);
   }
 
-  async deleteEntry(id: number): Promise<void> {
+  /** Deletes an entry and returns it, so it can be restored. */
+  async deleteEntry(id: number): Promise<StoredEntry | undefined> {
     const old = (await req(this.db.transaction(ENTRIES).objectStore(ENTRIES).get(id))) as StoredEntry | undefined;
     const tx = this.db.transaction(ENTRIES, "readwrite");
     tx.objectStore(ENTRIES).delete(id);
     await done(tx);
     if (old) await this.markDirty(old.day);
+    return old;
   }
 
-  /** Marks every day with entries, so the next roll-up writes the phone's copy of all of them. */
+  /** Puts a deleted entry back as it was: same storage key, row id and day. */
+  async restoreEntry(e: StoredEntry): Promise<void> {
+    const tx = this.db.transaction(ENTRIES, "readwrite");
+    tx.objectStore(ENTRIES).put(e);
+    await done(tx);
+    await this.markDirty(e.day);
+  }
+
+  /** Marks every day with entries or checks, so the next roll-up writes the phone's copy of all of them. */
   async markAllDirty(): Promise<void> {
-    const days = new Set([...(await this.dirtyDays()), ...(await this.allEntries()).map((e) => e.day)]);
+    const days = new Set([
+      ...(await this.dirtyDays()),
+      ...(await this.allEntries()).map((e) => e.day),
+      ...(await this.allChecks()).map((c) => c.day),
+    ]);
     await this.kvSet("dirtyDays", [...days].sort());
   }
 
@@ -161,6 +207,45 @@ export class Store implements SyncStore {
   async importEntries(entries: (LogEntry & { uid: string })[]): Promise<void> {
     const tx = this.db.transaction(ENTRIES, "readwrite");
     for (const e of entries) tx.objectStore(ENTRIES).add({ ...e, day: dayOf(e) });
+    await done(tx);
+  }
+
+  // --- result checks ---
+
+  async allChecks(): Promise<StoredCheck[]> {
+    return req(this.db.transaction(CHECKS).objectStore(CHECKS).getAll());
+  }
+
+  async checksForDay(day: string): Promise<StoredCheck[]> {
+    return req(this.db.transaction(CHECKS).objectStore(CHECKS).index("day").getAll(day));
+  }
+
+  async hasChecks(): Promise<boolean> {
+    return (await req(this.db.transaction(CHECKS).objectStore(CHECKS).count())) > 0;
+  }
+
+  /** Stores a check of a manual result with a new row id. */
+  async addCheck(c: Omit<ResultCheck, "uid">): Promise<void> {
+    const tx = this.db.transaction(CHECKS, "readwrite");
+    tx.objectStore(CHECKS).add({ ...c, uid: newUid() });
+    await done(tx);
+    await this.markDirty(c.day);
+  }
+
+  /** Undoes a check: it stays, with the time it was undone. */
+  async removeCheck(id: number, at: string): Promise<void> {
+    const old = (await req(this.db.transaction(CHECKS).objectStore(CHECKS).get(id))) as StoredCheck | undefined;
+    if (!old || old.removed_at) return;
+    const tx = this.db.transaction(CHECKS, "readwrite");
+    tx.objectStore(CHECKS).put({ ...old, removed_at: at });
+    await done(tx);
+    await this.markDirty(old.day);
+  }
+
+  /** Bulk import from the sheet; these days are already in sync. */
+  async importChecks(checks: ResultCheck[]): Promise<void> {
+    const tx = this.db.transaction(CHECKS, "readwrite");
+    for (const c of checks) tx.objectStore(CHECKS).add(c);
     await done(tx);
   }
 }

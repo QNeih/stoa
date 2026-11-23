@@ -1,7 +1,10 @@
 import type { ReactNode } from "react";
 import { useStoa } from "../state";
 
-/** Screen title with the sync state on the right; it turns into a sign-in button when one is needed. */
+/**
+ * Screen title with the sync state and the Settings gear on the right; the sync state turns into a
+ * sign-in button when one is needed.
+ */
 export function Header({ title, children }: { title: string; children?: ReactNode }) {
   const { syncing, account, signInNeeded, signIn, syncStatus, pending } = useStoa();
   const issue = !!account && !!syncStatus && !syncStatus.ok;
@@ -24,6 +27,9 @@ export function Header({ title, children }: { title: string; children?: ReactNod
       ) : (
         <span className={issue ? "sync-badge warn" : "sync-badge"}>{badge}</span>
       )}
+      <a className="gear" href="#/settings" aria-label="Settings">
+        ⚙
+      </a>
     </header>
   );
 }

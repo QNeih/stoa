@@ -1,35 +1,28 @@
 import { Nav } from "./components/Nav";
 import { StillGoingDialog } from "./components/StillGoingDialog";
 import { Toast } from "./components/Toast";
-import { HabitsScreen } from "./screens/Habits";
+import { GoalsScreen } from "./screens/Goals";
 import { LogScreen } from "./screens/Log";
-import { PlanScreen } from "./screens/Plan";
-import { RunningScreen } from "./screens/Running";
+import { ResultsScreen } from "./screens/Results";
 import { SessionForm } from "./screens/SessionForm";
 import { SettingsScreen } from "./screens/Settings";
-import { StopScreen } from "./screens/Stop";
+import { TimeScreen } from "./screens/Time";
 import { TodayScreen } from "./screens/Today";
 import { useStoa } from "./state";
 import { useHashRoute, type Route } from "./useHashRoute";
 
-/** A running timer takes the whole screen; otherwise the hash picks a tab. */
+/** The URL hash picks a tab; a running timer shows on its Today card, never over other tabs. */
 export function App() {
-  const { timer, stopEnd, stillGoingOpen } = useStoa();
+  const { timer, stillGoingOpen } = useStoa();
   const route = useHashRoute();
   return (
     <>
-      {timer && stopEnd ? (
-        <StopScreen timer={timer} end={stopEnd} />
-      ) : timer ? (
-        <RunningScreen timer={timer} />
-      ) : (
-        <div className="shell">
-          <main>
-            <TabScreen route={route} />
-          </main>
-          <Nav active={route.tab} />
-        </div>
-      )}
+      <div className="shell">
+        <main>
+          <TabScreen route={route} />
+        </main>
+        <Nav active={route.tab} />
+      </div>
       {timer && stillGoingOpen && <StillGoingDialog timer={timer} />}
       <Toast />
     </>
@@ -38,13 +31,15 @@ export function App() {
 
 function TabScreen({ route }: { route: Route }) {
   switch (route.tab) {
-    case "plan":
-      return <PlanScreen />;
+    case "time":
+      return <TimeScreen />;
+    case "goals":
+      return <GoalsScreen goalId={route.sub} />;
+    case "results":
+      return <ResultsScreen />;
     case "log":
       // Keyed so switching between sessions starts the form afresh.
       return route.sub ? <SessionForm key={`${route.sub}/${route.id}`} id={route.id} /> : <LogScreen />;
-    case "habits":
-      return <HabitsScreen />;
     case "settings":
       return <SettingsScreen />;
     default:

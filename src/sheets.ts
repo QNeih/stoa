@@ -1,12 +1,20 @@
 // The user's "Stoa" spreadsheet in their own Drive, through the Drive and Sheets REST APIs,
 // and the mapping between its rows and the app's types.
 import { AuthError } from "./googleAuth";
-import type { Config, LogEntry, Plan, StoredEntry } from "./types";
+import { isPaletteKey } from "./palette";
+import type { Config, LogEntry, Plan, Result, ResultCheck, StoredEntry } from "./types";
 
-/** Tabs and their header rows. Rows are read by header name, written in this order. */
+/**
+ * Tabs and their header rows. Rows are read by header name, written in this order. A column added
+ * to a tab goes at the end of its list, so opening an older sheet only appends it to the header row.
+ * Counters are retired: the `counters` tab and the `counter` and `delta` columns of `logs` stay for
+ * old rows, which the app neither reads nor removes.
+ */
 export const TABS = {
-  goals: ["id", "name", "rank", "archived"],
-  habits: ["id", "goal", "name", "archived"],
+  goals: ["id", "name", "rank", "archived", "color"],
+  habits: ["id", "goal", "name", "archived", "created"],
+  results: ["id", "habit", "name", "type", "min_minutes", "archived"],
+  result_checks: ["id", "result", "day", "checked_at", "note", "minutes_since_last", "removed_at"],
   counters: ["id", "goal", "name"],
   plans: ["date", "habit", "task", "minutes"],
   plan_days: ["date", "time_budget_min", "note"],
@@ -35,6 +43,9 @@ export class ApiError extends Error {
 
 /** Quoted A1 range: `'logs'!A1`. */
 const range = (tab: Tab, a1 = "") => `'${tab}'${a1 ? `!${a1}` : ""}`;
+
+/** Column letters for a zero-based column index: 0 is A, 26 is AA. */
+const column = (i: number): string => (i >= 26 ? column(Math.floor(i / 26) - 1) : "") + String.fromCharCode(65 + (i % 26));
 
 export class SheetsApi {
   constructor(
@@ -94,7 +105,8 @@ export class SheetsApi {
   }
 
   /**
-   * Adds missing tabs with their header rows. A spreadsheet Stoa has just created, or one still
+   * Adds missing tabs with their header rows, and appends columns added since to the header row of
+   * existing tabs (their data rows stay as they are). A spreadsheet Stoa has just created, or one still
    * without a single Stoa tab (an earlier setup that failed before its tabs were added), also loses
    * Google's default tab. A sheet that has any Stoa tab is the user's and keeps all its tabs.
    */
@@ -104,9 +116,12 @@ export class SheetsApi {
       `${SHEETS}/${id}?fields=sheets.properties(sheetId,title)`,
     );
     const titles = new Set(info.sheets.map((s) => s.properties.title));
-    const missing = (Object.keys(TABS) as Tab[]).filter((t) => !titles.has(t));
+    const all = Object.keys(TABS) as Tab[];
+    const present = all.filter((t) => titles.has(t));
+    if (present.length) await this.extendHeaders(id, present);
+    const missing = all.filter((t) => !titles.has(t));
     if (!missing.length) return;
-    const untouched = missing.length === Object.keys(TABS).length;
+    const untouched = !present.length;
     const extra = created || untouched ? info.sheets.filter((s) => !(s.properties.title in TABS)) : [];
     await this.call("POST", `${SHEETS}/${id}:batchUpdate`, {
       requests: [
@@ -118,6 +133,18 @@ export class SheetsApi {
       valueInputOption: "RAW",
       data: missing.map((t) => ({ range: range(t, "A1"), values: [[...TABS[t]]] })),
     });
+  }
+
+  /** Writes the columns a tab's header row lacks after its last header cell. */
+  private async extendHeaders(id: string, tabs: Tab[]): Promise<void> {
+    const qs = tabs.map((t) => `ranges=${encodeURIComponent(range(t, "1:1"))}`).join("&");
+    const r = await this.call<{ valueRanges: { values?: unknown[][] }[] }>("GET", `${SHEETS}/${id}/values:batchGet?${qs}`);
+    const data = tabs.flatMap((t, i) => {
+      const header = (r.valueRanges[i]?.values?.[0] ?? []).map((h) => String(h).trim());
+      const add = TABS[t].filter((k) => !header.includes(k));
+      return add.length ? [{ range: range(t, `${column(header.length)}1`), values: [add] }] : [];
+    });
+    if (data.length) await this.call("POST", `${SHEETS}/${id}/values:batchUpdate`, { valueInputOption: "RAW", data });
   }
 
   /** The data rows of the given tabs, keyed by header name; blank rows are skipped. */
@@ -155,27 +182,73 @@ export class SheetsApi {
 // --- mapping between rows and the app's types ---
 
 const isTrue = (s: string | undefined) => /^true$/i.test((s ?? "").trim());
+/** The YYYY-MM-DD start of a cell, or "" when it holds no date. */
+const isoDay = (s: string | undefined) => /^\d{4}-\d{2}-\d{2}/.exec((s ?? "").trim())?.[0] ?? "";
 const num = (s: string | undefined, fallback = 0) => {
   const n = Number((s ?? "").trim());
   return (s ?? "").trim() !== "" && Number.isFinite(n) ? n : fallback;
 };
 
-/** A row id for a new log entry. */
+/** A row id for a new log entry or result check. */
 export const newUid = () => crypto.randomUUID();
 
-export function configFromRows(t: Pick<Tables, "goals" | "habits" | "counters">): Config {
+/** Minutes a day needs for an automatic result whose `min_minutes` cell is empty. */
+export const DEFAULT_MIN_MINUTES = 30;
+
+/** The `results` rows with an id; any type other than `auto` counts as manual. */
+export function resultsFromRows(rows: Row[]): Result[] {
+  return rows
+    .filter((r) => r.id?.trim())
+    .map((r) => ({
+      id: r.id.trim(),
+      habit: r.habit ?? "",
+      name: r.name ?? "",
+      type: (r.type ?? "").trim().toLowerCase() === "auto" ? "auto" : "manual",
+      min_minutes: num(r.min_minutes, DEFAULT_MIN_MINUTES),
+      archived: isTrue(r.archived),
+    }));
+}
+
+/**
+ * The sheet's results with the phone's names and archived flags applied by id. Rows the check-in
+ * added since the phone last read them stay; results the sheet no longer has are dropped, since only
+ * the check-in creates or removes results. Other cells keep their text.
+ */
+export function mergeResults(remote: Row[], local: Result[]): { rows: Cell[][]; results: Result[] } {
+  const mine = new Map(local.map((r) => [r.id, r]));
+  const rows = remote.map((r) => {
+    const cells = rowCells("results", r);
+    const l = mine.get(r.id?.trim());
+    if (l && l.name !== (r.name ?? "")) cells[TABS.results.indexOf("name")] = l.name;
+    if (l && l.archived !== isTrue(r.archived)) cells[TABS.results.indexOf("archived")] = l.archived;
+    return cells;
+  });
+  const results = resultsFromRows(remote).map((r) => {
+    const l = mine.get(r.id);
+    return l ? { ...r, name: l.name, archived: l.archived } : r;
+  });
+  return { rows, results };
+}
+
+export function configFromRows(t: Pick<Tables, "goals" | "habits" | "results">): Config {
   return {
-    goals: t.goals.filter((r) => r.id).map((r) => ({ id: r.id, name: r.name ?? "", rank: num(r.rank), archived: isTrue(r.archived) })),
-    habits: t.habits.filter((r) => r.id).map((r) => ({ id: r.id, goal: r.goal ?? "", name: r.name ?? "", archived: isTrue(r.archived) })),
-    counters: t.counters.filter((r) => r.id).map((r) => ({ id: r.id, goal: r.goal ?? "", name: r.name ?? "" })),
+    goals: t.goals
+      .filter((r) => r.id)
+      .map((r) => {
+        const color = (r.color ?? "").trim();
+        return { id: r.id, name: r.name ?? "", rank: num(r.rank), archived: isTrue(r.archived), color: isPaletteKey(color) ? color : "" };
+      }),
+    habits: t.habits
+      .filter((r) => r.id)
+      .map((r) => ({ id: r.id, goal: r.goal ?? "", name: r.name ?? "", archived: isTrue(r.archived), created: isoDay(r.created) })),
+    results: resultsFromRows(t.results),
   };
 }
 
-export function configToRows(c: Config): Record<"goals" | "habits" | "counters", Cell[][]> {
+export function configToRows(c: Config): Record<"goals" | "habits", Cell[][]> {
   return {
-    goals: c.goals.map((g) => [g.id, g.name, g.rank, g.archived]),
-    habits: c.habits.map((h) => [h.id, h.goal, h.name, h.archived]),
-    counters: c.counters.map((x) => [x.id, x.goal, x.name]),
+    goals: c.goals.map((g) => [g.id, g.name, g.rank, g.archived, g.color]),
+    habits: c.habits.map((h) => [h.id, h.goal, h.name, h.archived, h.created]),
   };
 }
 
@@ -190,19 +263,67 @@ export function planFromRows(t: Pick<Tables, "plans" | "plan_days">, date: strin
   return { date, time_budget_min: day ? num(day.time_budget_min, planned) : planned, items, note: day?.note ?? "" };
 }
 
-/** A log entry as a `logs` row. A counter tap keeps its time in `start`. */
-export function entryToRow(e: StoredEntry): Cell[] {
-  return e.type === "session"
-    ? [e.uid, e.day, "session", e.habit, e.task, e.start, e.end, e.note, "", ""]
-    : [e.uid, e.day, "counter", "", "", e.at, "", "", e.counter, e.delta];
+/** A `plans` row in header order, with minutes as a number when the cell holds one. */
+export function planCells(r: Row): Cell[] {
+  const cells = rowCells("plans", r);
+  const minutes = (r.minutes ?? "").trim();
+  if (minutes !== "" && Number.isFinite(Number(minutes))) cells[TABS.plans.indexOf("minutes")] = Number(minutes);
+  return cells;
 }
 
-/** A `logs` row as an entry with its row id (a new id when the row has none); null for an unknown type. */
+/**
+ * The `plans` rows with the rows of the plan's date replaced by its items in card order, placed where
+ * that date's first row was (at the end when it had none). Rows of other dates stay as they are.
+ */
+export function mergePlan(remote: Row[], plan: Plan): Row[] {
+  const mine: Row[] = plan.items.map((i) => ({ date: plan.date, habit: i.habit, task: i.task, minutes: String(i.minutes) }));
+  const out: Row[] = [];
+  let placed = false;
+  for (const r of remote) {
+    if (r.date?.trim() !== plan.date) out.push(r);
+    else if (!placed) {
+      out.push(...mine);
+      placed = true;
+    }
+  }
+  if (!placed) out.push(...mine);
+  return out;
+}
+
+/** A session as a `logs` row. */
+export function entryToRow(e: StoredEntry): Cell[] {
+  return [e.uid, e.day, "session", e.habit, e.task, e.start, e.end, e.note, "", ""];
+}
+
+/** Whether the app owns a `logs` row: sessions. Other rows (old counter taps) are kept as they are. */
+export const isSessionRow = (r: Row) => r.type?.trim() === "session";
+
+/** A `logs` row as a session with its row id (a new id when the row has none); null for any other row. */
 export function entryFromRow(r: Row): (LogEntry & { uid: string }) | null {
+  if (!isSessionRow(r)) return null;
   const uid = r.id?.trim() || newUid();
-  if (r.type === "session") return { uid, type: "session", habit: r.habit ?? "", task: r.task ?? "", start: r.start ?? "", end: r.end ?? "", note: r.note ?? "" };
-  if (r.type === "counter") return { uid, type: "counter", counter: r.counter ?? "", at: r.start ?? "", delta: num(r.delta, 1) };
-  return null;
+  return { uid, type: "session", habit: r.habit ?? "", task: r.task ?? "", start: r.start ?? "", end: r.end ?? "", note: r.note ?? "" };
+}
+
+/** A result check as a `result_checks` row. */
+export function checkToRow(c: ResultCheck): Cell[] {
+  return [c.uid, c.result, c.day, c.checked_at, c.note, c.minutes_since_last, c.removed_at];
+}
+
+/** A `result_checks` row as a check (a new row id when the row has none); null without a result or day. */
+export function checkFromRow(r: Row): ResultCheck | null {
+  const result = r.result?.trim() ?? "";
+  const day = isoDay(r.day);
+  if (!result || !day) return null;
+  return {
+    uid: r.id?.trim() || newUid(),
+    result,
+    day,
+    checked_at: r.checked_at ?? "",
+    note: r.note ?? "",
+    minutes_since_last: num(r.minutes_since_last),
+    removed_at: r.removed_at ?? "",
+  };
 }
 
 /** A row in header order as the text Sheets would show, without trailing blanks, for comparing. */
@@ -217,3 +338,7 @@ export const rowCells = (tab: Tab, r: Row): Cell[] => TABS[tab].map((k) => r[k] 
 /** Sort key for `logs` rows: day, then start time. */
 export const logOrder = (a: Cell[], b: Cell[]) =>
   String(a[1]).localeCompare(String(b[1])) || Date.parse(String(a[5])) - Date.parse(String(b[5])) || 0;
+
+/** Sort key for `result_checks` rows: day, then check time. */
+export const checkOrder = (a: Cell[], b: Cell[]) =>
+  String(a[2]).localeCompare(String(b[2])) || Date.parse(String(a[3])) - Date.parse(String(b[3])) || 0;

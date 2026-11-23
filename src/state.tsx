@@ -1,13 +1,16 @@
 // App state and every action that changes it. Screens read and call these through useStoa().
 import { createContext, useContext, useEffect, useEffectEvent, useReducer, useRef, useState, type ReactNode } from "react";
 import type { Account, Store, SyncStatus } from "./db";
-import { activeGoals, counterName } from "./format";
+import type { PaletteKey } from "./palette";
 import { AuthError, forgetToken, getAccessToken, loadGis, renewOnTap } from "./googleAuth";
-import { slugify, toContract } from "./logs";
+import { toContract } from "./logs";
+import type { OverlapFix } from "./overlap";
 import { ApiError, SheetsApi } from "./sheets";
+import { minutesSinceLastCheck, standingCheckByUid } from "./results";
 import { restore, rollUp } from "./sync";
 import { isoLocal, localDate, validateStart } from "./time";
-import type { Config, Plan, RunningTimer, SessionEntry, StoredEntry } from "./types";
+import { addedItem, moveItem, switchTimer, timerSession, todayItems, withItems } from "./today";
+import type { Config, Plan, PlanItem, RunningTimer, SessionEntry, StoredCheck, StoredEntry } from "./types";
 
 /** After this long a reopened app asks whether the timer is still going. */
 const STILL_GOING_MS = 4 * 3600_000;
@@ -17,12 +20,13 @@ const TOAST_MS = 4000;
 export interface StoaData {
   config: Config;
   entries: StoredEntry[];
+  checks: StoredCheck[];
   timer: RunningTimer | null;
   plan: Plan | null;
   /** The Google account to sync with; null when signed out. */
   account: Account | null;
   syncStatus: SyncStatus | null;
-  /** Days plus config waiting to be written to the sheet. */
+  /** Days, config and plan waiting to be written to the sheet. */
   pending: number;
 }
 
@@ -32,24 +36,19 @@ export interface ToastMessage {
 }
 
 export async function loadData(store: Store): Promise<StoaData> {
-  const [config, entries, timer, plan, account, syncStatus, dirtyDays, configDirty] = await Promise.all([
+  const [config, entries, checks, timer, plan, account, syncStatus, dirtyDays, configDirty, planDirty] = await Promise.all([
     store.getConfig(),
     store.allEntries(),
+    store.allChecks(),
     store.getTimer(),
     store.getPlan(),
     store.getAccount(),
     store.getSyncStatus(),
     store.dirtyDays(),
     store.isConfigDirty(),
+    store.isPlanDirty(),
   ]);
-  return { config, entries, timer, plan, account, syncStatus, pending: dirtyDays.length + (configDirty ? 1 : 0) };
-}
-
-/** Saves a timer as a session that ends at `end`, at least one minute long. */
-async function saveTimerAsSession(store: Store, t: RunningTimer, end: Date, note: string): Promise<void> {
-  const start = new Date(t.start);
-  if (end <= start) end = new Date(start.getTime() + 60_000);
-  await store.addEntry({ type: "session", habit: t.habit, task: t.task, start: t.start, end: isoLocal(end), note: note.trim() });
+  return { config, entries, checks, timer, plan, account, syncStatus, pending: dirtyDays.length + (configDirty ? 1 : 0) + (planDirty ? 1 : 0) };
 }
 
 /** End of the latest saved session, or null when there is none. */
@@ -73,8 +72,6 @@ export function useStoaState(store: Store, initial: StoaData) {
   const [signInNeeded, setSignInNeeded] = useState(false);
   /** The spreadsheet id once found this session. */
   const sheetIdRef = useRef<string | null>(null);
-  /** Set while the stop screen asks for a note; the session ends at this time. */
-  const [stopEnd, setStopEnd] = useState<Date | null>(null);
   const [stillGoingOpen, setStillGoingOpen] = useState(false);
   const [toast, setToast] = useState<ToastMessage | null>(null);
   // Bumped when the app comes back to the foreground, so time-based numbers are recomputed.
@@ -168,11 +165,12 @@ export function useStoaState(store: Store, initial: StoaData) {
       const problem = validateStart(startAt, now, notBefore);
       if (problem) return problem;
     }
-    // One timer at a time: starting another stops the first.
-    if (running) await saveTimerAsSession(store, running, start, "");
-    await store.setTimer({ habit, task: task.trim(), start: isoLocal(start) });
+    // One timer at a time: starting another ends the first as a session.
+    const next = switchTimer(running, { habit, task }, start);
+    if (next.session) await store.addEntry(next.session);
+    await store.setTimer(next.timer);
     await reload();
-    location.hash = "#/today";
+    if (next.session) void sync();
     return null;
   }
 
@@ -187,27 +185,25 @@ export function useStoaState(store: Store, initial: StoaData) {
     return null;
   }
 
-  async function stopTimer(note: string): Promise<void> {
+  /** Ends the running timer as a session at `end` (now by default); a note can be added later in Log. */
+  async function pauseTimer(end = new Date()): Promise<void> {
     renewForTap();
     const running = dataRef.current.timer;
     if (!running) return;
-    await saveTimerAsSession(store, running, stopEnd ?? new Date(), note);
+    await store.addEntry(timerSession(running, end));
     await store.setTimer(null);
     await reload();
-    setStopEnd(null);
-    location.hash = "#/today";
     void sync();
   }
 
   async function discardTimer(): Promise<void> {
     await store.setTimer(null);
     await reload();
-    setStopEnd(null);
   }
 
   const checkStillGoing = useEffectEvent(() => {
     const t = dataRef.current.timer;
-    if (!t || stillGoingOpen || stopEnd) return;
+    if (!t || stillGoingOpen) return;
     const since = new Date(t.checked ?? t.start).getTime();
     if (Date.now() - since >= STILL_GOING_MS) setStillGoingOpen(true);
   });
@@ -219,40 +215,115 @@ export function useStoaState(store: Store, initial: StoaData) {
     setStillGoingOpen(false);
   }
 
-  /** Answers "still going?" with an end time: the stop screen opens with it, capped at now. */
-  function endStillGoing(end: Date): void {
+  /** Answers "still going?" with an end time: the session is saved with it, capped at now. */
+  async function endStillGoing(end: Date): Promise<void> {
     setStillGoingOpen(false);
     const now = new Date();
-    setStopEnd(end > now ? now : end);
+    await pauseTimer(end > now ? now : end);
+  }
+
+  // --- today's plan ---
+
+  /**
+   * Replaces today's plan items (a stale plan becomes today's) and marks the plan for the next roll-up.
+   * The screen shows the new order at once, before the store has it, so a dropped card does not jump back.
+   */
+  async function writeTodayItems(items: PlanItem[]): Promise<void> {
+    const plan = withItems(dataRef.current.plan, localDate(new Date()), items);
+    dataRef.current = { ...dataRef.current, plan };
+    setData(dataRef.current);
+    await store.setPlan(plan, true);
+    await reload();
+  }
+
+  /** Moves today's card at `from` to `to`, which rewrites the day's plan rows on the next roll-up. */
+  async function moveTodayItem(from: number, to: number): Promise<void> {
+    if (from === to) return;
+    renewForTap();
+    const items = todayItems(dataRef.current.plan, localDate(new Date()));
+    await writeTodayItems(moveItem(items, from, to));
+    void sync();
+  }
+
+  /** Adds a sub-goal to today's list at 0 minutes and starts its timer. */
+  async function addAndStart(habit: string): Promise<void> {
+    renewForTap();
+    const items = todayItems(dataRef.current.plan, localDate(new Date()));
+    const item = addedItem(habit);
+    await writeTodayItems([...items, item]);
+    await startTimer(item.habit, item.task);
+    void sync();
   }
 
   // --- log ---
 
-  async function tapCounter(id: string): Promise<void> {
+  /** Saves a session; `others` rewrites or deletes the saved entries it overlapped (see overlap.ts). */
+  async function saveSession(entry: SessionEntry, id?: number, others?: Pick<OverlapFix, "update" | "remove">): Promise<void> {
     renewForTap();
-    const entry = { type: "counter" as const, counter: id, at: isoLocal(new Date()), delta: 1 };
-    await store.addEntry(entry);
-    await reload();
-    void sync();
-    showToast(`${counterName(dataRef.current.config, id)} +1`, async () => {
-      const tap = (await store.allEntries()).filter((e) => e.type === "counter" && e.counter === id && e.at === entry.at).pop();
-      if (tap?.id !== undefined) await store.deleteEntry(tap.id);
-      await reload();
-    });
-  }
-
-  async function saveSession(entry: SessionEntry, id?: number): Promise<void> {
-    renewForTap();
+    for (const u of others?.update ?? []) await store.updateEntry(u.id, u.entry);
+    for (const r of others?.remove ?? []) await store.deleteEntry(r);
     if (id !== undefined) await store.updateEntry(id, entry);
     else await store.addEntry(entry);
     await reload();
     void sync();
   }
 
+  /** Deletes a session at once, with Undo in the toast putting the same entry back. */
   async function deleteEntry(id: number): Promise<void> {
-    await store.deleteEntry(id);
+    renewForTap();
+    const old = await store.deleteEntry(id);
     await reload();
+    if (old) showToast("Session deleted", () => void restoreEntry(old));
+    void sync();
   }
+
+  // --- results ---
+
+  /**
+   * Records a check of a manual result now, with an optional note and the sub-goal time since the last
+   * check of any of its results (the running timer counts up to now). Each call adds its own check.
+   */
+  async function checkResult(resultId: string, note = ""): Promise<void> {
+    renewForTap();
+    const { config, checks, entries, timer } = dataRef.current;
+    const result = config.results.find((r) => r.id === resultId);
+    const habit = config.habits.find((h) => h.id === result?.habit);
+    if (!result || result.type !== "manual" || !habit) return;
+    const now = new Date();
+    const day = localDate(now);
+    const tracked = timer ? [...entries, timerSession(timer, now)] : entries;
+    await store.addCheck({
+      result: resultId,
+      day,
+      checked_at: isoLocal(now),
+      note: note.trim(),
+      minutes_since_last: minutesSinceLastCheck(config.results, habit, checks, tracked, now),
+      removed_at: "",
+    });
+    await reload();
+    void sync();
+  }
+
+  async function restoreEntry(e: StoredEntry): Promise<void> {
+    await store.restoreEntry(e);
+    await reload();
+    void sync();
+  }
+
+  /** Undoes the check with row id `uid`: the check stays, with the time it was undone. */
+  async function uncheckResult(uid: string): Promise<void> {
+    renewForTap();
+    const check = standingCheckByUid(dataRef.current.checks, uid);
+    if (check?.id === undefined) return;
+    await store.removeCheck(check.id, isoLocal(new Date()));
+    await reload();
+    void sync();
+  }
+
+  /** Sessions filed under the days `from` to `to` (inclusive), read a page at a time for the Log. */
+  const loadEntries = (from: string, to: string) => store.entriesBetween(from, to);
+  /** The latest day before `day` with a session, or null; the Log uses it to page further back. */
+  const latestDayBefore = (day: string) => store.latestDayBefore(day);
 
   // --- config ---
 
@@ -263,42 +334,16 @@ export function useStoaState(store: Store, initial: StoaData) {
     void sync();
   }
 
-  const newId = (c: Config, name: string) => slugify(name, [...c.goals, ...c.habits, ...c.counters].map((x) => x.id));
-
-  const addHabit = (name: string, goal: string) =>
-    editConfig((c) => ({ ...c, habits: [...c.habits, { id: newId(c, name), goal, name, archived: false }] }));
-  const setHabitGoal = (id: string, goal: string) =>
-    editConfig((c) => ({ ...c, habits: c.habits.map((x) => (x.id === id ? { ...x, goal } : x)) }));
   const setHabitArchived = (id: string, archived: boolean) =>
     editConfig((c) => ({ ...c, habits: c.habits.map((x) => (x.id === id ? { ...x, archived } : x)) }));
-  const addCounter = (name: string, goal: string) =>
-    editConfig((c) => ({ ...c, counters: [...c.counters, { id: newId(c, name), goal, name }] }));
-  const removeCounter = (id: string) => editConfig((c) => ({ ...c, counters: c.counters.filter((x) => x.id !== id) }));
-  const addGoal = (name: string) =>
-    editConfig((c) => {
-      const rank = Math.max(0, ...c.goals.map((g) => g.rank)) + 1;
-      return { ...c, goals: [...c.goals, { id: newId(c, name), name, rank, archived: false }] };
-    });
+  const renameGoal = (id: string, name: string) =>
+    editConfig((c) => ({ ...c, goals: c.goals.map((g) => (g.id === id ? { ...g, name } : g)) }));
+  const setGoalColor = (id: string, color: PaletteKey) =>
+    editConfig((c) => ({ ...c, goals: c.goals.map((g) => (g.id === id ? { ...g, color } : g)) }));
+  const renameHabit = (id: string, name: string) =>
+    editConfig((c) => ({ ...c, habits: c.habits.map((x) => (x.id === id ? { ...x, name } : x)) }));
   const setGoalArchived = (id: string, archived: boolean) =>
     editConfig((c) => ({ ...c, goals: c.goals.map((g) => (g.id === id ? { ...g, archived } : g)) }));
-
-  /** Swaps a goal with its neighbour and renumbers the ranks; archived goals go last. */
-  const moveGoal = (id: string, dir: -1 | 1) =>
-    editConfig((c) => {
-      const order = activeGoals(c).map((g) => g.id);
-      const i = order.indexOf(id);
-      const j = i + dir;
-      if (j < 0 || j >= order.length) return c;
-      [order[i], order[j]] = [order[j], order[i]];
-      const archived = c.goals.filter((g) => g.archived);
-      return {
-        ...c,
-        goals: [
-          ...order.map((gid, k) => ({ ...c.goals.find((g) => g.id === gid)!, rank: k + 1 })),
-          ...archived.map((g, k) => ({ ...g, rank: order.length + k + 1 })),
-        ],
-      };
-    });
 
   // --- settings ---
 
@@ -319,9 +364,12 @@ export function useStoaState(store: Store, initial: StoaData) {
       // A phone without goals takes the sheet's config instead of overwriting it.
       const { config } = dataRef.current;
       if (!config.goals.length) await store.setConfig(config, false);
-      const n = await restore(store, api, sheetId);
-      if (n) showToast(`Restored ${n} entries from the sheet`);
-      else await store.markAllDirty();
+      const restored = await restore(store, api, sheetId);
+      if (restored.entries || restored.checks) {
+        showToast(`Restored ${restored.entries} entries and ${restored.checks} result checks from the sheet`);
+      }
+      // A phone that already had sessions writes all its days to the sheet.
+      if (!restored.entries) await store.markAllDirty();
     } catch (e) {
       alert(`Could not sign in: ${e instanceof Error ? e.message : e}`);
       return;
@@ -344,7 +392,14 @@ export function useStoaState(store: Store, initial: StoaData) {
   function exportAll(): void {
     const d = dataRef.current;
     const json = JSON.stringify(
-      { exported_at: isoLocal(new Date()), config: d.config, logs: d.entries.map(toContract), running_timer: d.timer, plan: d.plan },
+      {
+        exported_at: isoLocal(new Date()),
+        config: d.config,
+        logs: d.entries.map(toContract),
+        result_checks: d.checks.map(({ id: _, ...c }) => c),
+        running_timer: d.timer,
+        plan: d.plan,
+      },
       null,
       2,
     );
@@ -384,30 +439,29 @@ export function useStoaState(store: Store, initial: StoaData) {
     ...data,
     syncing,
     signInNeeded,
-    stopEnd,
     stillGoingOpen,
     toast,
     dismissToast: () => setToast(null),
     sync: syncNow,
     startTimer,
     setTimerStart,
-    requestStop: () => setStopEnd(new Date()),
-    cancelStop: () => setStopEnd(null),
-    stopTimer,
+    pauseTimer: () => pauseTimer(),
     discardTimer,
     confirmStillGoing,
     endStillGoing,
-    tapCounter,
+    moveTodayItem,
+    addAndStart,
     saveSession,
     deleteEntry,
-    addHabit,
-    setHabitGoal,
+    checkResult,
+    uncheckResult,
+    loadEntries,
+    latestDayBefore,
     setHabitArchived,
-    addCounter,
-    removeCounter,
-    addGoal,
+    renameGoal,
+    setGoalColor,
     setGoalArchived,
-    moveGoal,
+    renameHabit,
     signIn,
     signOut,
     exportAll,

@@ -1,10 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { dayOf, slugify, toContract } from "../src/logs";
+import { dayOf, firstPageStart, olderPageStart, slugify, toContract } from "../src/logs";
 import type { StoredEntry } from "../src/types";
 
 describe("logs", () => {
   const stored: StoredEntry[] = [
-    { id: 2, uid: "b", day: "2026-11-22", type: "counter", counter: "apps", at: "2026-11-22T11:00:00+01:00", delta: 1 },
     {
       id: 1,
       uid: "a",
@@ -20,7 +19,6 @@ describe("logs", () => {
 
   it("keeps the contract fields only", () => {
     expect(stored.map(toContract)).toEqual([
-      { type: "counter", counter: "apps", at: "2026-11-22T11:00:00+01:00", delta: 1 },
       { type: "session", habit: "gym", task: "Legs", start: "2026-11-22T09:00:00+01:00", end: "2026-11-22T10:00:00+01:00", note: "" },
     ]);
   });
@@ -35,6 +33,14 @@ describe("logs", () => {
       note: "",
     };
     expect(dayOf(e)).toBe("2026-11-22");
+  });
+
+  it("pages the Log by week: today and six days back first, then whole weeks back to the next day with entries", () => {
+    expect(firstPageStart("2026-11-23")).toBe("2026-11-17");
+    expect(olderPageStart("2026-11-17", "2026-11-16")).toBe("2026-11-10");
+    expect(olderPageStart("2026-11-17", "2026-11-10")).toBe("2026-11-10");
+    // Three empty weeks are skipped in one step; DST ends on 25 October.
+    expect(olderPageStart("2026-11-17", "2026-10-25")).toBe("2026-10-20");
   });
 
   it("makes unique lowercase slugs", () => {
