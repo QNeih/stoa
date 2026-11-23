@@ -185,6 +185,9 @@ describe("Goals tab", () => {
     expect(rows().map((r) => text(r, "strong"))).toEqual(["Read", "Write"]);
     expect(rows()[0].textContent).toContain("1h 00m this week");
     expect(rows()[0].textContent).toContain("1h 45m all time");
+    // The same trend as on the card, and a back link to the list.
+    expect(container.querySelector(".trend.down")!.getAttribute("aria-label")).toBe("15m less than last week");
+    expect(container.querySelector("a.back")!.getAttribute("href")).toBe("#/goals");
     // Both days had 30 minutes or more on Read: 1h + 45m over 2 days.
     expect(text(rows()[0], ".auto-result")).toBe("Read 30 minutes: 1h 45m over 2 days");
     // The archived Draw is out of the list, but its 30m stays in the goal total.

@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { BarChart, type BarBucket } from "../components/BarChart";
 import { Header } from "../components/Header";
+import { BackIcon } from "../components/Icons";
+import { Trend } from "../components/Trend";
 import { ItemMenu } from "../components/ItemMenu";
 import { goalStyle } from "../format";
 import { PALETTE, goalColor } from "../palette";
@@ -58,9 +60,10 @@ export function GoalDetail({ goalId }: { goalId: string }) {
           ⋯
         </button>
       </Header>
-      <p>
-        <a href="#/goals">All goals</a>
-      </p>
+      <a className="back" href="#/goals">
+        <BackIcon />
+        Back
+      </a>
 
       {!stats ? (
         <section className="card">
@@ -70,8 +73,9 @@ export function GoalDetail({ goalId }: { goalId: string }) {
       ) : (
         <>
           <section className="card">
-            <div className="goal-week">
+            <div className="goal-week trend-row">
               {hours(stats.weekMs)} <span className="muted">this week</span>
+              <Trend now={stats.weekMs} before={stats.lastWeekMs} />
             </div>
             <div className="muted">{hours(stats.allTimeMs)} all time</div>
           </section>

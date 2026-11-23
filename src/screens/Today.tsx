@@ -164,10 +164,8 @@ export function TodayScreen() {
         )}
         <div className="what">
           <div className="goal-name">{goalOf(item.habit)}</div>
-          <div className="sub-goal">
-            {name}
-            {item.task && <span className="task"> · {item.task}</span>}
-          </div>
+          <div className="sub-goal">{name}</div>
+          {item.task && <div className="task">{item.task}</div>}
         </div>
         {running ? (
           <div className="clock" aria-label="Time today">

@@ -92,7 +92,7 @@ nav.tabs {
 nav.tabs a { flex: 1; text-align: center; padding: 14px 0; color: var(--muted); text-decoration: none; font-size: 0.85rem; }
 nav.tabs a.active { color: var(--text); font-weight: 700; box-shadow: inset 0 3px 0 var(--stone); }
 
-/* Today: plan cards. A card's size never changes; the running card stands out by a flat tint and its border. */
+/* Today: plan cards. Starting or pausing never changes a card's size; the running card stands out by a flat tint and its border. */
 .plan-list { list-style: none; margin: 16px 0; padding: 0; display: flex; flex-direction: column; gap: 16px; }
 .plan-card {
   position: relative; display: flex; align-items: center; gap: 10px; min-height: 96px; padding: 16px 16px 16px 4px;
@@ -111,7 +111,11 @@ nav.tabs a.active { color: var(--text); font-weight: 700; box-shadow: inset 0 3p
 .plan-card .goal-name, .plan-card .sub-goal { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .plan-card .goal-name { font-size: 0.85rem; color: var(--muted); margin-bottom: 2px; }
 .plan-card .sub-goal { font-size: 1.1rem; font-weight: 600; }
-.plan-card .task { font-weight: 400; color: var(--muted); }
+/* The task gets its own row, up to two lines. */
+.plan-card .task {
+  margin-top: 2px; color: var(--muted); font-size: 0.95rem; overflow-wrap: anywhere;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
 .plan-card .today-time { font-size: 0.95rem; color: var(--muted); font-variant-numeric: tabular-nums; }
 .plan-card .clock { font-size: 1.5rem; font-weight: 700; font-variant-numeric: tabular-nums; }
 .play {
@@ -169,7 +173,11 @@ button.add { width: 100%; margin: 8px 0; border-style: dashed; color: var(--mute
 .goal-title { font-weight: 600; }
 .goal-week { font-size: 1.4rem; font-weight: 700; font-variant-numeric: tabular-nums; }
 .goal-week .muted { font-size: 0.85rem; font-weight: 400; }
-.goal-card .goal-week { display: flex; align-items: baseline; gap: 6px; }
+.goal-card .goal-week, .goal-week.trend-row { display: flex; align-items: baseline; gap: 6px; }
+a.back {
+  display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 4px 0; margin: 0 0 4px;
+  color: var(--muted); text-decoration: none; font-size: 0.9rem;
+}
 .trend { margin-left: auto; align-self: center; display: inline-flex; color: var(--muted); }
 .trend.up { color: var(--text); }
 .goal-meta { display: flex; justify-content: space-between; gap: 8px; font-size: 0.85rem; }
@@ -196,8 +204,14 @@ button[aria-pressed="true"] { border-color: var(--text); box-shadow: inset 0 0 0
 .result.auto { flex-direction: row; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 12px; }
 .result.auto.done { flex-direction: column; align-items: stretch; padding: 4px 12px; }
 .done-entry.auto { display: flex; align-items: center; gap: 12px; min-height: 44px; }
-.more-toggle { align-self: flex-start; }
-.more-entries { display: flex; flex-direction: column; margin: 0 0 4px 34px; border-top: 1px solid var(--line); }
+.result.done.has-more { position: relative; padding-right: 72px; }
+.more-toggle {
+  position: absolute; top: 4px; right: 4px; gap: 2px; min-height: 44px; padding: 0 8px;
+  border: 0; background: none; color: var(--muted);
+}
+.chevron { display: inline-flex; transition: transform 150ms ease; }
+.chevron.open { transform: rotate(180deg); }
+.more-entries { display: flex; flex-direction: column; margin: 0 -60px 4px 34px; border-top: 1px solid var(--line); }
 .more-entries .done-entry.auto { min-height: 40px; }
 .result .check { display: flex; align-items: center; gap: 12px; min-height: 44px; cursor: pointer; }
 .result .check input { flex: none; width: 22px; height: 22px; min-height: 0; margin: 0; accent-color: var(--accent); }
