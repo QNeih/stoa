@@ -1,10 +1,9 @@
 // App state and every action that changes it. Screens read and call these through useStoa().
 import { createContext, useContext, useEffect, useEffectEvent, useReducer, useRef, useState, type ReactNode } from "react";
 import type { Account, Store, SyncStatus } from "./db";
-import { activeGoals } from "./format";
-import { nextColor } from "./palette";
+import type { PaletteKey } from "./palette";
 import { AuthError, forgetToken, getAccessToken, loadGis, renewOnTap } from "./googleAuth";
-import { slugify, toContract } from "./logs";
+import { toContract } from "./logs";
 import { ApiError, SheetsApi } from "./sheets";
 import { restore, rollUp } from "./sync";
 import { isoLocal, localDate, validateStart } from "./time";
@@ -278,39 +277,16 @@ export function useStoaState(store: Store, initial: StoaData) {
     void sync();
   }
 
-  const newId = (c: Config, name: string) => slugify(name, [...c.goals, ...c.habits].map((x) => x.id));
-
-  const addHabit = (name: string, goal: string) =>
-    editConfig((c) => ({ ...c, habits: [...c.habits, { id: newId(c, name), goal, name, archived: false, created: localDate(new Date()) }] }));
-  const setHabitGoal = (id: string, goal: string) =>
-    editConfig((c) => ({ ...c, habits: c.habits.map((x) => (x.id === id ? { ...x, goal } : x)) }));
   const setHabitArchived = (id: string, archived: boolean) =>
     editConfig((c) => ({ ...c, habits: c.habits.map((x) => (x.id === id ? { ...x, archived } : x)) }));
-  const addGoal = (name: string) =>
-    editConfig((c) => {
-      const rank = Math.max(0, ...c.goals.map((g) => g.rank)) + 1;
-      return { ...c, goals: [...c.goals, { id: newId(c, name), name, rank, archived: false, color: nextColor(c.goals) }] };
-    });
+  const renameGoal = (id: string, name: string) =>
+    editConfig((c) => ({ ...c, goals: c.goals.map((g) => (g.id === id ? { ...g, name } : g)) }));
+  const setGoalColor = (id: string, color: PaletteKey) =>
+    editConfig((c) => ({ ...c, goals: c.goals.map((g) => (g.id === id ? { ...g, color } : g)) }));
+  const renameHabit = (id: string, name: string) =>
+    editConfig((c) => ({ ...c, habits: c.habits.map((x) => (x.id === id ? { ...x, name } : x)) }));
   const setGoalArchived = (id: string, archived: boolean) =>
     editConfig((c) => ({ ...c, goals: c.goals.map((g) => (g.id === id ? { ...g, archived } : g)) }));
-
-  /** Swaps a goal with its neighbour and renumbers the ranks; archived goals go last. */
-  const moveGoal = (id: string, dir: -1 | 1) =>
-    editConfig((c) => {
-      const order = activeGoals(c).map((g) => g.id);
-      const i = order.indexOf(id);
-      const j = i + dir;
-      if (j < 0 || j >= order.length) return c;
-      [order[i], order[j]] = [order[j], order[i]];
-      const archived = c.goals.filter((g) => g.archived);
-      return {
-        ...c,
-        goals: [
-          ...order.map((gid, k) => ({ ...c.goals.find((g) => g.id === gid)!, rank: k + 1 })),
-          ...archived.map((g, k) => ({ ...g, rank: order.length + k + 1 })),
-        ],
-      };
-    });
 
   // --- settings ---
 
@@ -420,12 +396,11 @@ export function useStoaState(store: Store, initial: StoaData) {
     addAndStart,
     saveSession,
     deleteEntry,
-    addHabit,
-    setHabitGoal,
     setHabitArchived,
-    addGoal,
+    renameGoal,
+    setGoalColor,
     setGoalArchived,
-    moveGoal,
+    renameHabit,
     signIn,
     signOut,
     exportAll,

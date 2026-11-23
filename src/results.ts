@@ -84,3 +84,10 @@ export function doneResults(results: Result[], checks: ResultCheck[], entries: L
   }
   return out.sort((a, b) => a.day.localeCompare(b.day) || order.get(a.result)! - order.get(b.result)!);
 }
+
+/** Session time on the days an automatic result was done, and how many days that was. */
+export function autoResultTotals(result: Result, entries: LogEntry[]): { ms: number; days: number } {
+  const byDay = msByDay(entries, result.habit);
+  const days = autoDoneDays(result, entries);
+  return { ms: days.reduce((n, d) => n + byDay.get(d)!, 0), days: days.length };
+}

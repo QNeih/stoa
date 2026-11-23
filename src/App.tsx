@@ -34,7 +34,7 @@ function TabScreen({ route }: { route: Route }) {
     case "time":
       return <TimeScreen />;
     case "goals":
-      return <GoalsScreen />;
+      return <GoalsScreen goalId={route.sub} />;
     case "results":
       return <ResultsScreen />;
     case "log":
