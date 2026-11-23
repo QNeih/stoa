@@ -198,3 +198,20 @@ button[aria-pressed="true"] { border-color: var(--text); box-shadow: inset 0 0 0
 .edit-log { color: var(--muted); }
 .note-sheet { display: flex; flex-direction: column; gap: 8px; padding: 4px 0 10px; }
 .note-sheet .actions button { flex: 1; }
+/* Log: quick input with its live preview, session rows with a menu, overlap warnings. */
+.quick { margin: 8px 0 4px; }
+.quick-preview { margin: 8px 0 0; padding: 12px 14px; }
+.quick-preview dl { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; margin: 0 0 8px; }
+.quick-preview dt { color: var(--muted); font-size: 0.85rem; align-self: center; }
+.quick-preview dd { margin: 0; font-weight: 600; }
+.quick-preview .actions > button { flex: 1; }
+.problems { margin: 0 0 8px; padding-left: 18px; color: var(--danger); }
+.warn { color: var(--danger); }
+a.link { display: inline-block; padding: 8px 0; }
+.list li.entry { -webkit-touch-callout: none; user-select: none; }
+.list li.entry .more { min-height: 36px; margin: -8px -8px -8px 0; border: 0; background: none; color: var(--muted); font-size: 1.2rem; }
+button.older { width: 100%; margin: 8px 0; }
+.overlap { margin: 8px 0; border-color: var(--danger); }
+.overlap h2 { color: var(--danger); font-size: 1rem; margin-bottom: 4px; }
+.overlap ul { margin: 0 0 10px; padding-left: 18px; }
+.overlap .stack > button { width: 100%; }

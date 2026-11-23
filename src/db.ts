@@ -140,6 +140,18 @@ export class Store implements SyncStore {
     return req(this.db.transaction(ENTRIES).objectStore(ENTRIES).index("day").getAll(day));
   }
 
+  /** Entries filed under the days from `from` to `to`, both included (YYYY-MM-DD). */
+  async entriesBetween(from: string, to: string): Promise<StoredEntry[]> {
+    return req(this.db.transaction(ENTRIES).objectStore(ENTRIES).index("day").getAll(IDBKeyRange.bound(from, to)));
+  }
+
+  /** The latest day before `day` that has an entry, or null when there is none. */
+  async latestDayBefore(day: string): Promise<string | null> {
+    const index = this.db.transaction(ENTRIES).objectStore(ENTRIES).index("day");
+    const cursor = await req(index.openKeyCursor(IDBKeyRange.upperBound(day, true), "prev"));
+    return cursor ? String(cursor.key) : null;
+  }
+
   async hasEntries(): Promise<boolean> {
     return (await req(this.db.transaction(ENTRIES).objectStore(ENTRIES).count())) > 0;
   }
@@ -163,12 +175,22 @@ export class Store implements SyncStore {
     await this.markDirty(day);
   }
 
-  async deleteEntry(id: number): Promise<void> {
+  /** Deletes an entry and returns it, so it can be restored. */
+  async deleteEntry(id: number): Promise<StoredEntry | undefined> {
     const old = (await req(this.db.transaction(ENTRIES).objectStore(ENTRIES).get(id))) as StoredEntry | undefined;
     const tx = this.db.transaction(ENTRIES, "readwrite");
     tx.objectStore(ENTRIES).delete(id);
     await done(tx);
     if (old) await this.markDirty(old.day);
+    return old;
+  }
+
+  /** Puts a deleted entry back as it was: same storage key, row id and day. */
+  async restoreEntry(e: StoredEntry): Promise<void> {
+    const tx = this.db.transaction(ENTRIES, "readwrite");
+    tx.objectStore(ENTRIES).put(e);
+    await done(tx);
+    await this.markDirty(e.day);
   }
 
   /** Marks every day with entries or checks, so the next roll-up writes the phone's copy of all of them. */

@@ -19,7 +19,13 @@ It is an installable offline web app (PWA): React and TypeScript, IndexedDB, and
   and "Add another" records a further check of the same result with its own note (for example "Job applied" three times).
   Automatic days follow the sessions ("edit in Log").
 - **Goals**: cards by time this week, with the change against the same span last week, the all-time total and a "Neglected" marker after 7 days without time. Tap a card for the goal: a time chart (week, month, year), time per sub-goal and each automatic result's total. Long-press a card (or use the menu on the goal) to rename, change colour or archive; archived goals and sub-goals are hidden, still counted, and restorable. Goals and sub-goals come from the daily check-in, not the app.
-- **Log**: add a past session, fix it (note included) or delete it.
+- **Log**: fix sessions. The past week shows by day; scrolling down loads a week more at a time.
+  Tap a session to edit it (note included); a long press or "…" opens Edit and Delete. Delete acts at once, with Undo.
+  Quick input at the top reads one line, e.g. "45m gym yesterday", "1h30 job search 14:00", "gym 9:00-10:15 friday" or
+  "gym 45 min on 2026-11-20": a duration or start-end times, a sub-goal (any part of its name), and a date (today by
+  default; yesterday, a weekday name or an ISO date). It shows the result before saving and says what is missing or wrong.
+  A duration alone ends now for today and at 12:00 for other days; Change opens it in the full form.
+  A session that overlaps saved ones asks first: keep both, trim (the earlier one ends where the later starts), or replace.
 - **Settings** (the gear at the top): Sign in with Google (or the signed-in email and Sign out), Sync now, and Export (one JSON file as a backup).
 
 ## Data
@@ -74,7 +80,7 @@ from `result_checks`; a phone that had sessions writes all its days.
 ```sh
 npm install
 npm run dev       # http://localhost:5173
-npm test          # unit tests for time, stats, results, Today, palette, log helpers and roll-up (fake Sheets API), plus Today, Time and Results screen checks
+npm test          # unit tests for time, stats, results, Today, palette, log helpers, quick input, overlaps and roll-up (fake Sheets API), plus Today, Time, Results and Log screen checks
 npm run build     # typecheck and build to dist/
 npm run preview   # serve dist/ at http://localhost:4173 (service worker on)
 npm run icons     # redraw the PNG icons in public/

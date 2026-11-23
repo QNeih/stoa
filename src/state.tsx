@@ -3,7 +3,8 @@ import { createContext, useContext, useEffect, useEffectEvent, useReducer, useRe
 import type { Account, Store, SyncStatus } from "./db";
 import type { PaletteKey } from "./palette";
 import { AuthError, forgetToken, getAccessToken, loadGis, renewOnTap } from "./googleAuth";
-import { toContract } from "./logs";
+import { slugify, toContract } from "./logs";
+import type { OverlapFix } from "./overlap";
 import { ApiError, SheetsApi } from "./sheets";
 import { minutesSinceLastCheck, standingCheckByUid } from "./results";
 import { restore, rollUp } from "./sync";
@@ -256,17 +257,24 @@ export function useStoaState(store: Store, initial: StoaData) {
 
   // --- log ---
 
-  async function saveSession(entry: SessionEntry, id?: number): Promise<void> {
+  /** Saves a session; `others` rewrites or deletes the saved entries it overlapped (see overlap.ts). */
+  async function saveSession(entry: SessionEntry, id?: number, others?: Pick<OverlapFix, "update" | "remove">): Promise<void> {
     renewForTap();
+    for (const u of others?.update ?? []) await store.updateEntry(u.id, u.entry);
+    for (const r of others?.remove ?? []) await store.deleteEntry(r);
     if (id !== undefined) await store.updateEntry(id, entry);
     else await store.addEntry(entry);
     await reload();
     void sync();
   }
 
+  /** Deletes a session at once, with Undo in the toast putting the same entry back. */
   async function deleteEntry(id: number): Promise<void> {
-    await store.deleteEntry(id);
+    renewForTap();
+    const old = await store.deleteEntry(id);
     await reload();
+    if (old) showToast("Session deleted", () => void restoreEntry(old));
+    void sync();
   }
 
   // --- results ---
@@ -296,6 +304,12 @@ export function useStoaState(store: Store, initial: StoaData) {
     void sync();
   }
 
+  async function restoreEntry(e: StoredEntry): Promise<void> {
+    await store.restoreEntry(e);
+    await reload();
+    void sync();
+  }
+
   /** Undoes the check with row id `uid`: the check stays, with the time it was undone. */
   async function uncheckResult(uid: string): Promise<void> {
     renewForTap();
@@ -305,6 +319,11 @@ export function useStoaState(store: Store, initial: StoaData) {
     await reload();
     void sync();
   }
+
+  /** Sessions filed under the days `from` to `to` (inclusive), read a page at a time for the Log. */
+  const loadEntries = (from: string, to: string) => store.entriesBetween(from, to);
+  /** The latest day before `day` with a session, or null; the Log uses it to page further back. */
+  const latestDayBefore = (day: string) => store.latestDayBefore(day);
 
   // --- config ---
 
@@ -436,6 +455,8 @@ export function useStoaState(store: Store, initial: StoaData) {
     deleteEntry,
     checkResult,
     uncheckResult,
+    loadEntries,
+    latestDayBefore,
     setHabitArchived,
     renameGoal,
     setGoalColor,
