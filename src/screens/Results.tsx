@@ -1,5 +1,6 @@
 import { useState, type CSSProperties, type ReactNode } from "react";
 import { Header } from "../components/Header";
+import { PenIcon } from "../components/Icons";
 import { activeGoals } from "../format";
 import { PALETTE, goalColor } from "../palette";
 import { doneResults, inDoneWindow, openResults, type DoneResult } from "../results";
@@ -128,42 +129,49 @@ export function ResultsScreen() {
     );
   };
 
-  const doneRow = (d: DoneResult) => {
+  /** One done entry: the first of its card in full, the others (`compact`) as a day line. */
+  const doneEntry = (d: DoneResult, compact: boolean) => {
     const r = byId.get(d.result)!;
     const when = dayText(d.day, today);
     if (d.type === "auto") {
       return (
-        <li key={`auto-${d.result}-${d.day}`} className="result auto done">
-          <span className="tick" aria-hidden="true">
-            ✓
-          </span>
+        <div key={`auto-${d.day}`} className="done-entry auto">
+          {!compact && (
+            <span className="tick" aria-hidden="true">
+              ✓
+            </span>
+          )}
           <div className="result-body">
-            <span className="result-name">{r.name}</span>
+            {!compact && <span className="result-name">{r.name}</span>}
             <div className="muted small">
               {when} · {formatDuration(d.ms)} ·{" "}
-              <a className="edit-log" href="#/log">
-                edit in Log
+              <a className="edit-log" href="#/log" aria-label={`Edit ${when.toLowerCase()} in Log`}>
+                <PenIcon />Log
               </a>
             </div>
           </div>
-        </li>
+        </div>
       );
     }
     return (
-      <li key={d.check.uid} className="result done">
+      <div key={d.check.uid} className="done-entry">
         <label className="check">
           <input type="checkbox" checked aria-label={`Uncheck ${r.name}`} onChange={() => void uncheckResult(d.check.uid)} />
           <div className="result-body">
-            <span className="result-name">{r.name}</span>
-            <div className="muted small">{when}</div>
-            {d.check.note && <div className="note small">{d.check.note}</div>}
+            {!compact && <span className="result-name">{r.name}</span>}
+            <div className={compact ? "small" : "muted small"}>{when}</div>
+            {!compact && d.check.note && <div className="note small">{d.check.note}</div>}
           </div>
         </label>
-        <button type="button" className="link small" onClick={() => startCheck(`copy:${d.check.uid}`)}>
-          Add another
-        </button>
-        {noteFor === `copy:${d.check.uid}` && noteForm(d.result)}
-      </li>
+        {!compact && (
+          <>
+            <button type="button" className="link small" onClick={() => startCheck(`copy:${d.check.uid}`)}>
+              Add another
+            </button>
+            {noteFor === `copy:${d.check.uid}` && noteForm(d.result)}
+          </>
+        )}
+      </div>
     );
   };
 
@@ -182,12 +190,49 @@ export function ResultsScreen() {
           )}
           <h2>Done</h2>
           {shownDone.length ? (
-            <Grouped config={config} items={shownDone} habitOf={(d) => byId.get(d.result)!.habit} row={doneRow} />
+            <Grouped
+              config={config}
+              items={doneGroups(shownDone)}
+              habitOf={(g) => byId.get(g[0].result)!.habit}
+              row={(g) => <DoneCard key={groupKey(g[0])} entries={g} render={doneEntry} />}
+            />
           ) : (
             <p className="muted small">Nothing done yet.</p>
           )}
         </>
       )}
     </div>
+  );
+}
+
+/** Done entries of the same result and note share a card. */
+const groupKey = (d: DoneResult) => `${d.result}\u0000${d.type === "manual" ? d.check.note : ""}`;
+
+/** `done` (newest first) grouped by result and note, each group newest first, in the order of its newest entry. */
+function doneGroups(done: DoneResult[]): DoneResult[][] {
+  const groups = new Map<string, DoneResult[]>();
+  for (const d of done) {
+    const k = groupKey(d);
+    groups.set(k, [...(groups.get(k) ?? []), d]);
+  }
+  return [...groups.values()];
+}
+
+/** A card of done entries: the newest in full, the others behind "N more". */
+function DoneCard({ entries, render }: { entries: DoneResult[]; render: (d: DoneResult, compact: boolean) => ReactNode }) {
+  const [open, setOpen] = useState(false);
+  const [first, ...rest] = entries;
+  return (
+    <li className={first.type === "auto" ? "result auto done" : "result done"}>
+      {render(first, false)}
+      {rest.length > 0 && (
+        <>
+          <button type="button" className="link small more-toggle" aria-expanded={open} onClick={() => setOpen(!open)}>
+            {open ? "Show less" : `${rest.length} more`}
+          </button>
+          {open && <div className="more-entries">{rest.map((d) => render(d, true))}</div>}
+        </>
+      )}
+    </li>
   );
 }

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { PALETTE, PALETTE_KEYS, type PaletteKey } from "../palette";
+import { ArchiveIcon, PenIcon } from "./Icons";
 
 /**
  * A bottom sheet of actions for a goal or sub-goal: rename, change colour (goals only, when `color`
@@ -32,14 +33,24 @@ export function ItemMenu({
         <h2>{title}</h2>
         {view === "main" && (
           <div className="stack">
-            <button onClick={() => setView("rename")}>Rename</button>
-            {onColor && <button onClick={() => setView("color")}>Change colour</button>}
+            <button className="pick" onClick={() => setView("rename")}>
+              <PenIcon />
+              Rename
+            </button>
+            {onColor && (
+              <button className="pick" onClick={() => setView("color")}>
+                <span className="swatch" style={{ background: color ? PALETTE[color] : "var(--line)" }} />
+                Change colour
+              </button>
+            )}
             <button
+              className="pick"
               onClick={() => {
                 onArchive();
                 onClose();
               }}
             >
+              <ArchiveIcon />
               Archive
             </button>
           </div>

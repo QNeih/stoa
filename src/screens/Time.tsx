@@ -6,10 +6,10 @@ import { RANGES, rangesWithData, timeBuckets, type Range } from "../stats";
 import { useStoa } from "../state";
 import { formatDuration } from "../time";
 
-const RANGE_NAMES: Record<Range, string> = { week: "Week", month: "Month", year: "Year" };
+const RANGE_NAMES: Record<Range, string> = { day: "Day", week: "Week", month: "Month", year: "Year" };
 const minutes = (ms: number) => Math.round(ms / 60_000);
 
-/** Time per week, month or year, stacked by goal. */
+/** Time per day, week, month or year, one bar per goal. */
 export function TimeScreen() {
   const { config, entries } = useStoa();
   const available = rangesWithData(entries, new Date());
@@ -30,7 +30,7 @@ export function TimeScreen() {
     <div>
       <Header title="Time" />
       {!range ? (
-        <p className="muted">Not enough time logged yet. A chart appears once your first session is from before this week.</p>
+        <p className="muted">Not enough time logged yet. A chart appears once your first session is from before today.</p>
       ) : (
         <>
           <p className="time-total"><strong>{formatDuration(total)}</strong> <span className="muted">in total</span></p>
@@ -67,7 +67,8 @@ export function TimeScreen() {
               <span className="muted small">Tap a bar to see its goals.</span>
             )}
           </div>
-          <table className="sr-only">
+          <div className="sr-only">
+          <table>
             <caption>Minutes per goal by {range}</caption>
             <thead>
               <tr><th>{RANGE_NAMES[range]}</th>{goals.map((g) => <th key={g.id}>{g.name}</th>)}<th>Total</th></tr>
@@ -82,6 +83,7 @@ export function TimeScreen() {
               ))}
             </tbody>
           </table>
+          </div>
         </>
       )}
     </div>

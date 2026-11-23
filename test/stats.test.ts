@@ -91,6 +91,17 @@ describe("time per bucket", () => {
     expect(timeBuckets(config, entries, "week", now, 2).map((b) => b.start)).toEqual(["2026-11-16", "2026-11-23"]);
   });
 
+  it("buckets by day, the last two weeks by default", () => {
+    const days = timeBuckets(config, entries, "day", now);
+    expect(days).toHaveLength(14);
+    expect(days.slice(-4)).toEqual([
+      { start: "2026-11-22", byGoal: { family: 1 * h }, totalMs: 1 * h },
+      { start: "2026-11-23", byGoal: { family: 1 * h }, totalMs: 1 * h },
+      { start: "2026-11-24", byGoal: { career: 2 * h }, totalMs: 2 * h },
+      { start: "2026-11-25", byGoal: {}, totalMs: 0 },
+    ]);
+  });
+
   it("buckets by month and year too", () => {
     expect(timeBuckets(config, entries, "month", now)).toEqual([{ start: "2026-11-01", byGoal: { career: 3 * h, family: 2 * h }, totalMs: 5 * h }]);
     const older = [s("partner", "2025-12-31T10:00:00+01:00", "2025-12-31T11:00:00+01:00"), ...entries];
@@ -104,8 +115,8 @@ describe("time per bucket", () => {
 
   it("offers a range once the data reaches back before its current bucket", () => {
     expect(rangesWithData([], now)).toEqual([]);
-    expect(rangesWithData(entries.slice(2), now)).toEqual([]);
-    expect(rangesWithData(entries, now)).toEqual(["week"]);
-    expect(rangesWithData([s("partner", "2025-12-31T10:00:00+01:00", "2025-12-31T11:00:00+01:00")], now)).toEqual(["week", "month", "year"]);
+    expect(rangesWithData(entries.slice(2), now)).toEqual(["day"]);
+    expect(rangesWithData(entries, now)).toEqual(["day", "week"]);
+    expect(rangesWithData([s("partner", "2025-12-31T10:00:00+01:00", "2025-12-31T11:00:00+01:00")], now)).toEqual(["day", "week", "month", "year"]);
   });
 });

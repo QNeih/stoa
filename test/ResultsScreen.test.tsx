@@ -219,7 +219,14 @@ describe("Results", () => {
       const s = seeded();
       s.entries.push(session(5, "gym", "14", "18:00", "18:40"), session(6, "gym", "16", "18:00", "18:40"));
       await render(s);
-      expect(doneRows().filter((r) => r.textContent!.includes("Trained"))).toHaveLength(2);
+      // Both days of Trained share one card; the older one shows when it is expanded.
+      const trained = doneRows().filter((r) => r.textContent!.includes("Trained"));
+      expect(trained).toHaveLength(1);
+      const more = trained[0].querySelector<HTMLButtonElement>(".more-toggle")!;
+      expect(more.textContent).toBe("1 more");
+      await tap(more);
+      expect(more.getAttribute("aria-expanded")).toBe("true");
+      expect(trained[0].querySelectorAll(".done-entry")).toHaveLength(2);
     });
 
     it("lists done entries with their day: manual ones with the note and a checkbox, automatic ones pointing to Log", async () => {
@@ -229,7 +236,8 @@ describe("Results", () => {
       expect(pb.textContent).toContain("21");
       expect(pb.querySelector(".note")!.textContent).toBe("felt easy");
       expect(pb.querySelector<HTMLInputElement>("input")!.checked).toBe(true);
-      expect(trained.textContent).toContain("Yesterday · 40m · edit in Log");
+      expect(trained.textContent).toContain("Yesterday · 40m · Log");
+      expect(trained.querySelector("a")!.getAttribute("aria-label")).toBe("Edit yesterday in Log");
       expect(trained.querySelector("input")).toBeNull();
       expect(trained.querySelector("a")!.getAttribute("href")).toBe("#/log");
     });

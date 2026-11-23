@@ -135,7 +135,7 @@ describe("Goals tab", () => {
   it("shows the change against the same span last week", async () => {
     await render();
     // Nothing was tracked last Monday up to 10:30, so Body is up by its whole week.
-    expect(cards()[0].textContent).toContain("+2h 00m vs last week");
+    expect(cards()[0].querySelector(".trend.up")!.getAttribute("aria-label")).toBe("2h 00m more than this time last week");
   });
 
   it("renames, recolours and archives a goal from the long-press menu", async () => {
