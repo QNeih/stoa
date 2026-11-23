@@ -14,7 +14,7 @@ export interface GoalStats {
   goal: string;
   /** Monday 00:00 until now. */
   weekMs: number;
-  /** The same span a week earlier: last Monday 00:00 until this time 7 days ago. */
+  /** All of last week: last Monday 00:00 until this Monday 00:00. */
   lastWeekMs: number;
   allTimeMs: number;
   /** No time on the goal today or in the 6 days before. */
@@ -37,7 +37,7 @@ function addDays(d: Date, days: number): Date {
 }
 
 /**
- * Time per active goal and its sub-goals: this week, the same span last week, and all time, plus
+ * Time per active goal and its sub-goals: this week, all of last week, and all time, plus
  * whether the goal went without time for the last 7 days. Most time this week first, then by rank.
  * A session counts for the goal its sub-goal belongs to now.
  */
@@ -45,7 +45,6 @@ export function goalStats(config: Config, entries: LogEntry[], now: Date): GoalS
   const today = localDate(now);
   const weekStart = startOfWeek(now).getTime();
   const lastWeekStart = addDays(startOfWeek(now), -7).getTime();
-  const lastWeekEnd = addDays(now, -7).getTime();
   const sevenDaysStart = localDate(addDays(now, -6));
   const habitStats = new Map(config.habits.map((h) => [h.id, { habit: h.id, weekMs: 0, lastWeekMs: 0, allTimeMs: 0 }]));
   const lastDay = new Map<string, string>();
@@ -54,7 +53,7 @@ export function goalStats(config: Config, entries: LogEntry[], now: Date): GoalS
     const st = habitStats.get(s.habit);
     if (!st) continue;
     st.weekMs += overlapMs(s, weekStart, now.getTime());
-    st.lastWeekMs += overlapMs(s, lastWeekStart, lastWeekEnd);
+    st.lastWeekMs += overlapMs(s, lastWeekStart, weekStart);
     st.allTimeMs += overlapMs(s, -Infinity, now.getTime());
     for (const p of splitByDay(new Date(s.start), new Date(s.end))) {
       if (p.ms > 0 && p.day <= today && (lastDay.get(s.habit) ?? "") < p.day) lastDay.set(s.habit, p.day);

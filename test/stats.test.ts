@@ -39,24 +39,24 @@ describe("goal stats", () => {
   const entries: LogEntry[] = [
     s("job-search", "2026-11-24T09:00:00+01:00", "2026-11-24T10:00:00+01:00"),
     s("partner", "2026-11-23T20:00:00+01:00", "2026-11-23T23:00:00+01:00"),
-    s("job-search", "2026-11-18T09:00:00+01:00", "2026-11-18T10:00:00+01:00"), // inside last week's span
-    s("job-search", "2026-11-18T13:00:00+01:00", "2026-11-18T14:00:00+01:00"), // after it
+    s("job-search", "2026-11-18T09:00:00+01:00", "2026-11-18T10:00:00+01:00"), // last week
+    s("job-search", "2026-11-18T13:00:00+01:00", "2026-11-18T14:00:00+01:00"), // last week, after this time of day: still counts
     s("cv", "2026-11-02T10:00:00+01:00", "2026-11-02T10:30:00+01:00"),
     s("old-h", "2026-11-24T10:00:00+01:00", "2026-11-24T11:00:00+01:00"),
   ];
 
-  it("gives this week, the same span last week and all time per active goal, most time this week first", () => {
+  it("gives this week, all of last week and all time per active goal, most time this week first", () => {
     const stats = goalStats(cfg, entries, now);
     expect(stats.map((g) => [g.goal, g.weekMs / h, g.lastWeekMs / h, g.allTimeMs / h])).toEqual([
       ["family", 3, 0, 3],
-      ["career", 1, 1, 3.5],
+      ["career", 1, 2, 3.5],
     ]);
   });
 
   it("lists sub-goals with their totals, leaving out archived ones without time", () => {
     const career = goalStats(cfg, entries, now).find((g) => g.goal === "career")!;
     expect(career.subGoals).toEqual([
-      { habit: "job-search", weekMs: 1 * h, lastWeekMs: 1 * h, allTimeMs: 3 * h },
+      { habit: "job-search", weekMs: 1 * h, lastWeekMs: 2 * h, allTimeMs: 3 * h },
       { habit: "cv", weekMs: 0, lastWeekMs: 0, allTimeMs: 0.5 * h },
     ]);
   });
