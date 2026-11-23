@@ -1,11 +1,11 @@
 # Stoa
 
-A phone app that tracks time spent on your goals, shows today's plan and what got done.
+A phone app that tracks time spent on your goals, shows today's list of sub-goals and what got done.
 It is an installable offline web app (PWA): React and TypeScript, IndexedDB, and a Google Sheet in the user's own Drive instead of a backend.
 
 ## Use
 
-- **Today**: today's plan from the Stoa sheet as cards in row order, each with its goal colour, and the time spent today at the top.
+- **Today**: today's list of sub-goals from the Stoa sheet as cards in row order, each with its goal colour, and the time spent today at the top.
   Drag a card's handle to reorder. Play starts a timer; one timer at a time, so starting another ends the running one as a session.
   Pause ends the session; a note can be added later in Log. The running card stands out and counts today's time on its sub-goal.
   Forgot to start? Change the running timer's start (up to 24 hours back). The timer survives closing the app; after 4 hours a
@@ -63,9 +63,10 @@ A newer app version adds its new columns to the end of an existing tab's header 
   manual result is checked; unchecking fills `removed_at` and keeps the row. A roll-up replaces the rows of each
   changed day, like `logs`. `minutes_since_last` is the sub-goal time since the previous check of any of its results
   (or since the sub-goal was created, for its first check).
-- `plans`: date, habit, task, minutes (one row per item; row order is the card order). `plan_days`: date,
-  time_budget_min, note. Written by the daily check-in. The app may reorder a day's rows and add a sub-goal
-  at 0 minutes; it then rewrites that day's rows. Without a `plan_days` row the budget is the planned total.
+- `plans`: date, habit, task (one row per sub-goal on the day's list; row order is the card order). Written by
+  the daily check-in, which only picks the sub-goals; Stoa plans no minutes or time budget. The app may reorder a
+  day's rows and add a sub-goal; it then rewrites that day's rows. Older sheets may still hold a `minutes`
+  column on `plans` (cleared when the app rewrites the tab) and a `plan_days` tab (ignored).
 - `logs`: id, day, type, habit, task, start, end, note, counter, delta. Written by the app: a roll-up replaces
   the session rows of each changed day with the phone's copy. `id` is made on the phone; `day` is the local
   start date. Sessions are stored unsplit; the stats split them at local midnight.

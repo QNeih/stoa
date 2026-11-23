@@ -32,12 +32,11 @@ export function dropIndex(centers: number[], from: number, dy: number): number {
 /** Today's plan with its items replaced; a plan for another day (or none) becomes a new plan for today. */
 export function withItems(plan: Plan | null, today: string, items: PlanItem[]): Plan {
   if (plan?.date === today) return { ...plan, items };
-  // Without a plan_days row the budget is the planned total, which is 0 for added items.
-  return { date: today, time_budget_min: items.reduce((sum, i) => sum + i.minutes, 0), items, note: "" };
+  return { date: today, items };
 }
 
-/** A sub-goal added on the phone: a plan row at 0 minutes, without a task. */
-export const addedItem = (habit: string): PlanItem => ({ habit, task: "", minutes: 0 });
+/** A sub-goal added on the phone: a plan row without a task. */
+export const addedItem = (habit: string): PlanItem => ({ habit, task: "" });
 
 /**
  * The sub-goals "+ Add" offers: not archived, of an active goal, and not yet on today's list.

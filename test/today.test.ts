@@ -31,11 +31,9 @@ const config: Config = {
 
 const plan: Plan = {
   date: "2026-11-23",
-  time_budget_min: 90,
-  note: "Busy",
   items: [
-    { habit: "cv", task: "", minutes: 30 },
-    { habit: "partner", task: "Walk", minutes: 60 },
+    { habit: "cv", task: "" },
+    { habit: "partner", task: "Walk" },
   ],
 };
 
@@ -81,7 +79,7 @@ describe("reorder", () => {
     expect(dropIndex(centers, 3, -1000)).toBe(0);
   });
 
-  it("rewrites today's plan rows and keeps its budget and note", () => {
+  it("rewrites today's plan rows in the new order", () => {
     const reordered = withItems(plan, "2026-11-23", moveItem(plan.items, 1, 0));
     expect(reordered).toEqual({ ...plan, items: [plan.items[1], plan.items[0]] });
   });
@@ -93,18 +91,15 @@ describe("add out of plan", () => {
     expect(addableHabits(config, []).map((h) => h.id)).toEqual(["cv", "apply", "partner"]);
   });
 
-  it("appends a row at 0 minutes to today's plan", () => {
+  it("appends a row to today's plan", () => {
     const added = withItems(plan, "2026-11-23", [...plan.items, addedItem("apply")]);
-    expect(added.items.at(-1)).toEqual({ habit: "apply", task: "", minutes: 0 });
-    expect(added.time_budget_min).toBe(90);
+    expect(added.items.at(-1)).toEqual({ habit: "apply", task: "" });
   });
 
   it("starts a new plan for today when the stored one is for another day", () => {
     expect(withItems(plan, "2026-11-24", [addedItem("apply")])).toEqual({
       date: "2026-11-24",
-      time_budget_min: 0,
-      note: "",
-      items: [{ habit: "apply", task: "", minutes: 0 }],
+      items: [{ habit: "apply", task: "" }],
     });
     expect(withItems(null, "2026-11-24", []).items).toEqual([]);
   });
