@@ -71,7 +71,7 @@ const config: Config = {
   ],
 };
 
-/** A store on 23 Nov: Personal best checked on the 21st, gym 40 minutes yesterday and 12 so far today. */
+/** A store on 23 Nov: Personal best checked on the 21st (done, so not open), gym 40 minutes yesterday and 12 so far today. */
 function seeded(timer: RunningTimer | null = null): FakeStore {
   const s = new FakeStore(
     config,
@@ -168,17 +168,20 @@ describe("Results", () => {
       expect(store.checks[0]).toMatchObject({ note: "", minutes_since_last: 30 + 20 + 10 });
     });
 
-    it("leave a result checked today as it is, and never check an automatic result", async () => {
+    it("add a further check of a result already checked, and never check an automatic result", async () => {
       await render(seeded());
       await act(() => stoa.checkResult("5k"));
+      vi.setSystemTime(new Date(at("23", "10:30")));
       await act(() => stoa.checkResult("5k", "again"));
       await act(() => stoa.checkResult("trained"));
-      expect(store.checks.map((c) => c.result)).toEqual(["pb", "5k"]);
+      expect(store.checks.map((c) => c.result)).toEqual(["pb", "5k", "5k"]);
+      // Counted from the previous check on the sub-goal, not from Personal best.
+      expect(store.checks.at(-1)).toMatchObject({ note: "again", minutes_since_last: 0 });
     });
 
     it("uncheck by setting removed_at and keeping the row", async () => {
       await render(seeded());
-      await act(() => stoa.uncheckResult("pb", "2026-11-21"));
+      await act(() => stoa.uncheckResult("c1"));
       expect(store.checks).toHaveLength(1);
       expect(store.checks[0].removed_at).toBe(at("23", "10:00"));
       expect(store.dirty).toEqual(new Set(["2026-11-21"]));
@@ -190,7 +193,7 @@ describe("Results", () => {
       await render(seeded());
       expect(text(container.querySelectorAll(".goal-headline"))).toEqual(["Body", "Body"]);
       expect(text(container.querySelectorAll(".divider"))).toEqual(["Run", "Gym", "Run", "Gym"]);
-      expect(text(openRows().map((r) => r.querySelector(".result-name")!))).toEqual(["Ran 5k", "Personal best", "Trained"]);
+      expect(text(openRows().map((r) => r.querySelector(".result-name")!))).toEqual(["Ran 5k", "Trained"]);
       expect(container.textContent).not.toContain("Marathon");
       expect(container.textContent).not.toContain("Rated 1500");
     });
@@ -200,6 +203,23 @@ describe("Results", () => {
       const trained = openRow("Trained");
       expect(trained.textContent).toContain("12 / 30 min today");
       expect(trained.querySelector("input")).toBeNull();
+    });
+
+    it("keeps a manual result done and off the open list on later days", async () => {
+      const s = seeded();
+      s.checks.push({ id: 2, uid: "c2", result: "5k", day: "2026-11-01", checked_at: at("01", "09:00"), note: "", minutes_since_last: 0, removed_at: "" });
+      await render(s);
+      expect(openRow("Ran 5k")).toBeUndefined();
+      expect(openRow("Personal best")).toBeUndefined();
+      // The check of the 1st is past the 7-day window: not listed, still done.
+      expect(text(doneRows().map((r) => r.querySelector(".result-name")!))).toEqual(["Personal best", "Trained"]);
+    });
+
+    it("drops entries 8 days after their day, manual and automatic", async () => {
+      const s = seeded();
+      s.entries.push(session(5, "gym", "14", "18:00", "18:40"), session(6, "gym", "16", "18:00", "18:40"));
+      await render(s);
+      expect(doneRows().filter((r) => r.textContent!.includes("Trained"))).toHaveLength(2);
     });
 
     it("lists done entries with their day: manual ones with the note and a checkbox, automatic ones pointing to Log", async () => {
@@ -227,9 +247,9 @@ describe("Results", () => {
 
     it("checks without a note in one tap on Skip note", async () => {
       await render(seeded());
-      await tap(openRow("Personal best").querySelector("input")!);
+      await tap(openRow("Ran 5k").querySelector("input")!);
       await tap(button("Skip note"));
-      expect(store.checks.at(-1)).toMatchObject({ result: "pb", day: "2026-11-23", note: "" });
+      expect(store.checks.at(-1)).toMatchObject({ result: "5k", day: "2026-11-23", note: "" });
     });
 
     it("closes the sheet without checking when the box is tapped again", async () => {
@@ -242,7 +262,19 @@ describe("Results", () => {
       expect(store.checks).toHaveLength(1);
     });
 
-    it("unchecking a result checked today returns it to the open list", async () => {
+    it("adds another check of a done result with its own note, and unchecks each on its own", async () => {
+      await render(seeded());
+      await tap(button("Add another"));
+      type(container.querySelector<HTMLInputElement>('input[aria-label="Note"]')!, "X");
+      await tap(button("Save"));
+      expect(store.checks.at(-1)).toMatchObject({ result: "pb", day: "2026-11-23", note: "X" });
+      expect(doneRows().filter((r) => r.textContent!.includes("Personal best"))).toHaveLength(2);
+      await tap(container.querySelectorAll('input[aria-label="Uncheck Personal best"]')[0]);
+      expect(store.checks.map((c) => c.removed_at !== "")).toEqual([false, true]);
+      expect(openRow("Personal best")).toBeUndefined();
+    });
+
+    it("unchecking the only check returns a result to the open list", async () => {
       await render(seeded());
       await act(() => stoa.checkResult("5k"));
       await tap(container.querySelector('input[aria-label="Uncheck Ran 5k"]')!);

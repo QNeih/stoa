@@ -13,9 +13,11 @@ It is an installable offline web app (PWA): React and TypeScript, IndexedDB, and
 - **Time**: stacked bar chart of time per week, month or year by goal (a range shows once the first session is before the current week, month or year). The all-time total sits above it; tap a bar for its minutes per goal.
 - **Results**: the only place where results are checked and unchecked, grouped by goal and then by sub-goal; archived ones are hidden.
   Open results come first: a manual result has a checkbox, and checking it offers an optional note (Skip note checks it in one tap).
-  An automatic result shows today's progress toward its minimum instead. Below, the done list shows each day a result was done:
-  manual checks with their note can be unchecked, which reopens a result checked today; automatic days follow the sessions
-  ("edit in Log"). A manual result can be checked once a day. Done entries older than 14 days wait behind "Show older".
+  A manual result is checked once: it then stays done and does not reopen on a later day. Unchecking its check reopens it.
+  An automatic result shows today's progress toward its minimum instead. Below, the done list shows each day a result was done
+  for 7 days after that day (older entries drop out of the list; the sheet keeps them): manual checks with their note can be unchecked,
+  and "Add another" records a further check of the same result with its own note (for example "Job applied" three times).
+  Automatic days follow the sessions ("edit in Log").
 - **Goals**: cards by time this week, with the change against the same span last week, the all-time total and a "Neglected" marker after 7 days without time. Tap a card for the goal: a time chart (week, month, year), time per sub-goal and each automatic result's total. Long-press a card (or use the menu on the goal) to rename, change colour or archive; archived goals and sub-goals are hidden, still counted, and restorable. Goals and sub-goals come from the daily check-in, not the app.
 - **Log**: add a past session, fix it (note included) or delete it.
 - **Settings** (the gear at the top): Sign in with Google (or the signed-in email and Sign out), Sync now, and Export (one JSON file as a backup).

@@ -2,14 +2,11 @@ import { useState, type CSSProperties, type ReactNode } from "react";
 import { Header } from "../components/Header";
 import { activeGoals } from "../format";
 import { PALETTE, goalColor } from "../palette";
-import { doneResults, type DoneResult } from "../results";
+import { doneResults, inDoneWindow, openResults, type DoneResult } from "../results";
 import { useStoa } from "../state";
 import { daysBetween, formatDuration, localDate, parseLocalDate } from "../time";
 import { msToday } from "../today";
 import type { Config, Goal, Result } from "../types";
-
-/** Done entries older than this many days wait behind "Show older". */
-const DAYS_SHOWN = 14;
 
 /** Results that show: not archived, on a sub-goal that is not archived, of a goal that is not archived. */
 function visibleResults(config: Config): Result[] {
@@ -61,22 +58,21 @@ function Grouped<T>({ config, items, habitOf, row }: { config: Config; items: T[
 /**
  * The one place where results are checked and unchecked. Open results come first: manual ones with a
  * checkbox (checking offers an optional note), automatic ones with today's progress toward their
- * minimum. The done list below holds standing checks and the days automatic results were reached.
+ * minimum. The done list below holds the last 7 days of standing checks (each with "Add another") and of days automatic results were reached.
  */
 export function ResultsScreen() {
   const { config, checks, entries, timer, checkResult, uncheckResult } = useStoa();
   const [noteFor, setNoteFor] = useState<string | null>(null);
   const [note, setNote] = useState("");
-  const [showAll, setShowAll] = useState(false);
   const now = new Date();
   const today = localDate(now);
 
   const results = visibleResults(config);
   const byId = new Map(results.map((r) => [r.id, r]));
-  const done = doneResults(results, checks, entries).reverse();
-  const doneToday = new Set(done.filter((d) => d.day === today).map((d) => d.result));
-  const open = results.filter((r) => !doneToday.has(r.id));
-  const shownDone = showAll ? done : done.filter((d) => daysBetween(d.day, today) < DAYS_SHOWN);
+  const open = openResults(results, checks, entries, today);
+  const shownDone = doneResults(results, checks, entries)
+    .filter((d) => inDoneWindow(d.day, today))
+    .reverse();
 
   const startCheck = (id: string) => {
     setNote("");
@@ -86,6 +82,27 @@ export function ResultsScreen() {
     setNoteFor(null);
     void checkResult(id, text);
   };
+
+  /** The inline sheet that saves a check of result `id` with an optional note. */
+  const noteForm = (id: string) => (
+    <form
+      className="note-sheet"
+      onSubmit={(e) => {
+        e.preventDefault();
+        save(id, note);
+      }}
+    >
+      <input aria-label="Note" placeholder="Note (optional)" value={note} autoFocus onChange={(e) => setNote(e.target.value)} />
+      <div className="actions">
+        <button type="submit" className="primary">
+          Save
+        </button>
+        <button type="button" onClick={() => save(id, "")}>
+          Skip note
+        </button>
+      </div>
+    </form>
+  );
 
   const openRow = (r: Result) => {
     if (r.type === "auto") {
@@ -106,25 +123,7 @@ export function ResultsScreen() {
           <input type="checkbox" checked={noting} onChange={() => startCheck(r.id)} />
           <span className="result-name">{r.name}</span>
         </label>
-        {noting && (
-          <form
-            className="note-sheet"
-            onSubmit={(e) => {
-              e.preventDefault();
-              save(r.id, note);
-            }}
-          >
-            <input aria-label="Note" placeholder="Note (optional)" value={note} autoFocus onChange={(e) => setNote(e.target.value)} />
-            <div className="actions">
-              <button type="submit" className="primary">
-                Save
-              </button>
-              <button type="button" onClick={() => save(r.id, "")}>
-                Skip note
-              </button>
-            </div>
-          </form>
-        )}
+        {noting && noteForm(r.id)}
       </li>
     );
   };
@@ -153,13 +152,17 @@ export function ResultsScreen() {
     return (
       <li key={d.check.uid} className="result done">
         <label className="check">
-          <input type="checkbox" checked aria-label={`Uncheck ${r.name}`} onChange={() => void uncheckResult(d.result, d.day)} />
+          <input type="checkbox" checked aria-label={`Uncheck ${r.name}`} onChange={() => void uncheckResult(d.check.uid)} />
           <div className="result-body">
             <span className="result-name">{r.name}</span>
             <div className="muted small">{when}</div>
             {d.check.note && <div className="note small">{d.check.note}</div>}
           </div>
         </label>
+        <button type="button" className="link small" onClick={() => startCheck(`copy:${d.check.uid}`)}>
+          Add another
+        </button>
+        {noteFor === `copy:${d.check.uid}` && noteForm(d.result)}
       </li>
     );
   };
@@ -182,11 +185,6 @@ export function ResultsScreen() {
             <Grouped config={config} items={shownDone} habitOf={(d) => byId.get(d.result)!.habit} row={doneRow} />
           ) : (
             <p className="muted small">Nothing done yet.</p>
-          )}
-          {done.length > shownDone.length && (
-            <button className="link" onClick={() => setShowAll(true)}>
-              Show older
-            </button>
           )}
         </>
       )}
