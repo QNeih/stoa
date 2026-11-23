@@ -44,6 +44,13 @@ export function parseLocalDate(day: string): Date {
   return new Date(y, m - 1, d);
 }
 
+/** The day `n` calendar days after `day` (before it when `n` is negative), as YYYY-MM-DD. */
+export function addDays(day: string, n: number): string {
+  const d = parseLocalDate(day);
+  d.setDate(d.getDate() + n);
+  return localDate(d);
+}
+
 /** Whole calendar days from day `a` to day `b` (both YYYY-MM-DD). */
 export function daysBetween(a: string, b: string): number {
   const ms = parseLocalDate(b).getTime() - parseLocalDate(a).getTime();
