@@ -223,7 +223,7 @@ describe("Results", () => {
       const trained = doneRows().filter((r) => r.textContent!.includes("Trained"));
       expect(trained).toHaveLength(1);
       const more = trained[0].querySelector<HTMLButtonElement>(".more-toggle")!;
-      expect(more.textContent).toBe("1 more");
+      expect(more.getAttribute("aria-label")).toBe("Show 1 more");
       await tap(more);
       expect(more.getAttribute("aria-expanded")).toBe("true");
       expect(trained[0].querySelectorAll(".done-entry")).toHaveLength(2);

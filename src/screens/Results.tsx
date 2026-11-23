@@ -1,6 +1,6 @@
 import { useState, type CSSProperties, type ReactNode } from "react";
 import { Header } from "../components/Header";
-import { PenIcon } from "../components/Icons";
+import { ChevronIcon, PenIcon } from "../components/Icons";
 import { activeGoals } from "../format";
 import { PALETTE, goalColor } from "../palette";
 import { doneResults, inDoneWindow, openResults, type DoneResult } from "../results";
@@ -218,17 +218,26 @@ function doneGroups(done: DoneResult[]): DoneResult[][] {
   return [...groups.values()];
 }
 
-/** A card of done entries: the newest in full, the others behind "N more". */
+/** A card of done entries: the newest in full, the others behind the chevron at the top right. */
 function DoneCard({ entries, render }: { entries: DoneResult[]; render: (d: DoneResult, compact: boolean) => ReactNode }) {
   const [open, setOpen] = useState(false);
   const [first, ...rest] = entries;
   return (
-    <li className={first.type === "auto" ? "result auto done" : "result done"}>
+    <li className={["result done", first.type === "auto" && "auto", rest.length > 0 && "has-more"].filter(Boolean).join(" ")}>
       {render(first, false)}
       {rest.length > 0 && (
         <>
-          <button type="button" className="link small more-toggle" aria-expanded={open} onClick={() => setOpen(!open)}>
-            {open ? "Show less" : `${rest.length} more`}
+          <button
+            type="button"
+            className="more-toggle"
+            aria-expanded={open}
+            aria-label={open ? "Show less" : `Show ${rest.length} more`}
+            onClick={() => setOpen(!open)}
+          >
+            <span className="small">+{rest.length}</span>
+            <span className={open ? "chevron open" : "chevron"}>
+              <ChevronIcon />
+            </span>
           </button>
           {open && <div className="more-entries">{rest.map((d) => render(d, true))}</div>}
         </>

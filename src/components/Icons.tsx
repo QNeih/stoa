@@ -64,3 +64,17 @@ export const TrendFlatIcon = () => (
     <path d="M17 8l4 4-4 4" />
   </Icon>
 );
+
+export const BackIcon = () => (
+  <Icon size={18}>
+    <path d="M19 12H5" />
+    <path d="M11 6l-6 6 6 6" />
+  </Icon>
+);
+
+/** Points down; turn it with CSS (`.chevron.open`) to point up. */
+export const ChevronIcon = () => (
+  <Icon>
+    <path d="M6 9l6 6 6-6" />
+  </Icon>
+);
