@@ -11,7 +11,7 @@ It is an installable offline web app (PWA): React and TypeScript, IndexedDB, and
   Forgot to start? Change the running timer's start (up to 24 hours back). The timer survives closing the app; after 4 hours a
   reopened app asks "still going?", where an earlier end can be set. "+ Add" puts another sub-goal on today's list and starts it.
 - **Time** and **Results**: coming next.
-- **Goals**: goals (ranked, archived, never deleted) and their sub-goals (one field plus a goal, can move to another goal). Goal stats are coming next.
+- **Goals**: cards by time this week, with the change against the same span last week, the all-time total and a "Neglected" marker after 7 days without time. Tap a card for the goal: a time chart (week, month, year), time per sub-goal and each automatic result's total. Long-press a card (or use the menu on the goal) to rename, change colour or archive; archived goals and sub-goals are hidden, still counted, and restorable. Goals and sub-goals come from the daily check-in, not the app.
 - **Log**: add a past session, fix it (note included) or delete it.
 - **Settings** (the gear at the top): Sign in with Google (or the signed-in email and Sign out), Sync now, and Export (one JSON file as a backup).
 
