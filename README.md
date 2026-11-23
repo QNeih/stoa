@@ -5,19 +5,21 @@ It is an installable offline web app (PWA): React and TypeScript, IndexedDB, and
 
 ## Use
 
-- **Today**: time today, done list, time this week per big goal, days since time was last spent.
-- **Plan**: today's plan from the Stoa sheet, with planned and spent minutes per item and the time spent off the plan. Any habit can also start without a plan.
-- **Running**: only the timer and the task. One timer at a time. Forgot to start? Change its start time (up to 24 hours back), or set "Started at" under Plan. It survives closing the app; after 4 hours a reopened app asks "still going?".
-- **Stop**: an optional one-line note, which goes into the done list.
-- **Log**: add a past session, fix it or delete it.
-- **Habits**: goals (ranked, archived, never deleted) and their sub-goals (one field plus a goal, can move to another goal).
-- **Settings**: Sign in with Google (or the signed-in email and Sign out), Sync now, and Export (one JSON file as a backup).
+- **Today**: today's plan from the Stoa sheet as cards in row order, each with its goal colour, and the time spent today at the top.
+  Drag a card's handle to reorder. Play starts a timer; one timer at a time, so starting another ends the running one as a session.
+  Pause ends the session; a note can be added later in Log. The running card stands out and counts today's time on its sub-goal.
+  Forgot to start? Change the running timer's start (up to 24 hours back). The timer survives closing the app; after 4 hours a
+  reopened app asks "still going?", where an earlier end can be set. "+ Add" puts another sub-goal on today's list and starts it.
+- **Time** and **Results**: coming next.
+- **Goals**: goals (ranked, archived, never deleted) and their sub-goals (one field plus a goal, can move to another goal). Goal stats are coming next.
+- **Log**: add a past session, fix it (note included) or delete it.
+- **Settings** (the gear at the top): Sign in with Google (or the signed-in email and Sign out), Sync now, and Export (one JSON file as a backup).
 
 ## Data
 
 Live state stays on the phone; logging and the timer never wait for the network or sign-in.
 A roll-up writes changed days to a spreadsheet named "Stoa" in the user's own Google Drive.
-It runs when the app opens, after a stop, after a habit change, and from Sync now.
+It runs when the app opens, after a session ends, after a change to goals, sub-goals or today's list, and from Sync now.
 
 ### Sign-in
 
@@ -64,7 +66,7 @@ from `result_checks`; a phone that had sessions writes all its days.
 ```sh
 npm install
 npm run dev       # http://localhost:5173
-npm test          # unit tests for time, stats, results, palette, log helpers and roll-up (fake Sheets API), plus a Plan screen check
+npm test          # unit tests for time, stats, results, Today, palette, log helpers and roll-up (fake Sheets API), plus a Today screen check
 npm run build     # typecheck and build to dist/
 npm run preview   # serve dist/ at http://localhost:4173 (service worker on)
 npm run icons     # redraw the PNG icons in public/
