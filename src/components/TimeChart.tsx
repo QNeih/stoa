@@ -47,7 +47,9 @@ export function TimeChart({
   const { max, ticks } = axis(Math.max(...buckets.map((b) => b.totalMs), 1));
   const plotH = H - TOP - BOTTOM;
   const colW = (W - LEFT) / buckets.length;
-  const barW = Math.min(colW * 0.7, 40);
+  // Week labels are too wide for every column on a phone: label every second bar, the newest included.
+  const crowded = range === "week" && colW < 30;
+  const barW =Math.min(colW * 0.7, 40);
   const y = (ms: number) => TOP + plotH - (ms / max) * plotH;
 
   return (
@@ -81,9 +83,11 @@ export function TimeChart({
               acc += ms;
               return <rect key={g.id} x={x} y={top} width={barW} height={h} fill={PALETTE[goalColor(g)]} stroke="var(--text)" strokeWidth="0.75" />;
             })}
-            <text x={LEFT + i * colW + colW / 2} y={H - 8} textAnchor="middle" fontSize="10" fontWeight={on ? 700 : 400} fill={on ? "var(--text)" : "var(--muted)"}>
-              {bucketLabel(b.start, range)}
-            </text>
+            {(on || !crowded || (buckets.length - 1 - i) % 2 === 0) && (
+              <text x={LEFT + i * colW + colW / 2} y={H - 8} textAnchor="middle" fontSize="10" fontWeight={on ? 700 : 400} fill={on ? "var(--text)" : "var(--muted)"}>
+                {bucketLabel(b.start, range)}
+              </text>
+            )}
           </g>
         );
       })}
