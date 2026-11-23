@@ -145,3 +145,24 @@ button.add { width: 100%; margin: 8px 0; border-style: dashed; color: var(--mute
   padding: 10px 14px; border-radius: 12px; background: var(--text); color: var(--bg);
 }
 .toast .link { color: var(--bg); }
+
+/* Results: goal headline, sub-goal divider, then rows. */
+.result-goal { margin: 4px 0 16px; }
+.goal-headline { display: flex; align-items: center; gap: 8px; margin: 12px 0 4px; font-size: 1.1rem; }
+.divider { display: flex; align-items: center; gap: 10px; margin: 6px 0; color: var(--muted); font-size: 0.85rem; }
+.divider::before, .divider::after { content: ""; flex: 1; border-top: 1px solid var(--line); }
+.result-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.result {
+  background: var(--card); border: 1px solid var(--line); border-left: 4px solid var(--goal); border-radius: 12px;
+  padding: 4px 12px; min-height: 48px; display: flex; flex-direction: column; justify-content: center;
+}
+.result.auto { flex-direction: row; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 12px; }
+.result.auto.done { justify-content: flex-start; }
+.result .check { display: flex; align-items: center; gap: 12px; min-height: 44px; cursor: pointer; }
+.result .check input { flex: none; width: 22px; height: 22px; min-height: 0; margin: 0; accent-color: var(--accent); }
+.result-body { padding: 4px 0; min-width: 0; }
+.result-name { font-weight: 600; }
+.result .tick { flex: none; width: 22px; text-align: center; color: var(--muted); }
+.edit-log { color: var(--muted); }
+.note-sheet { display: flex; flex-direction: column; gap: 8px; padding: 4px 0 10px; }
+.note-sheet .actions button { flex: 1; }

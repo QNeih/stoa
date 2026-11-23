@@ -10,7 +10,12 @@ It is an installable offline web app (PWA): React and TypeScript, IndexedDB, and
   Pause ends the session; a note can be added later in Log. The running card stands out and counts today's time on its sub-goal.
   Forgot to start? Change the running timer's start (up to 24 hours back). The timer survives closing the app; after 4 hours a
   reopened app asks "still going?", where an earlier end can be set. "+ Add" puts another sub-goal on today's list and starts it.
-- **Time** and **Results**: coming next.
+- **Results**: the only place where results are checked and unchecked, grouped by goal and then by sub-goal; archived ones are hidden.
+  Open results come first: a manual result has a checkbox, and checking it offers an optional note (Skip note checks it in one tap).
+  An automatic result shows today's progress toward its minimum instead. Below, the done list shows each day a result was done:
+  manual checks with their note can be unchecked, which reopens a result checked today; automatic days follow the sessions
+  ("edit in Log"). A manual result can be checked once a day. Done entries older than 14 days wait behind "Show older".
+- **Time**: coming next.
 - **Goals**: goals (ranked, archived, never deleted) and their sub-goals (one field plus a goal, can move to another goal). Goal stats are coming next.
 - **Log**: add a past session, fix it (note included) or delete it.
 - **Settings** (the gear at the top): Sign in with Google (or the signed-in email and Sign out), Sync now, and Export (one JSON file as a backup).
@@ -19,7 +24,7 @@ It is an installable offline web app (PWA): React and TypeScript, IndexedDB, and
 
 Live state stays on the phone; logging and the timer never wait for the network or sign-in.
 A roll-up writes changed days to a spreadsheet named "Stoa" in the user's own Google Drive.
-It runs when the app opens, after a session ends, after a change to goals, sub-goals or today's list, and from Sync now.
+It runs when the app opens, after a session ends, after a change to goals, sub-goals or today's list, after a result is checked or unchecked, and from Sync now.
 
 ### Sign-in
 
@@ -67,7 +72,7 @@ from `result_checks`; a phone that had sessions writes all its days.
 ```sh
 npm install
 npm run dev       # http://localhost:5173
-npm test          # unit tests for time, stats, results, Today, palette, log helpers and roll-up (fake Sheets API), plus a Today screen check
+npm test          # unit tests for time, stats, results, Today, palette, log helpers and roll-up (fake Sheets API), plus Today and Results screen checks
 npm run build     # typecheck and build to dist/
 npm run preview   # serve dist/ at http://localhost:4173 (service worker on)
 npm run icons     # redraw the PNG icons in public/
