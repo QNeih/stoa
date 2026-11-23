@@ -81,15 +81,22 @@ function fakeGoogle(data?: Partial<Record<Tab, Cell[][]>>, failWrites = false, f
         const rows = tabs.get(tabOf(d.range))!;
         written.push(tabOf(d.range));
         d.values.forEach((row: Cell[], i: number) => {
-          rows[i] = [...Array.from({ length: from }, (_, j) => rows[i]?.[j] ?? ""), ...row];
+          const old = rows[i] ?? [];
+          rows[i] = [...Array.from({ length: from }, (_, j) => old[j] ?? ""), ...row, ...old.slice(from + row.length)];
         });
       }
       return json(200, {});
     }
     if (op === "/values:batchClear") {
       for (const r of body.ranges) {
-        const from = Number(/!A(\d+):Z$/.exec(r)![1]);
-        tabs.get(tabOf(r))!.length = Math.min(tabs.get(tabOf(r))!.length, from - 1);
+        const rows = tabs.get(tabOf(r))!;
+        const below = /!A(\d+):Z$/.exec(r);
+        if (below) rows.length = Math.min(rows.length, Number(below[1]) - 1);
+        else {
+          // Whole columns of every row, as in "D1:D".
+          const [a, b] = /!([A-Z]+)1:([A-Z]+)$/.exec(r)!.slice(1).map((c) => [...c].reduce((n, ch) => n * 26 + ch.charCodeAt(0) - 64, 0) - 1);
+          for (const row of rows) for (let j = a; j <= b && j < row.length; j++) row[j] = "";
+        }
       }
       return json(200, {});
     }
@@ -243,10 +250,9 @@ describe("roll-up", () => {
       goals: [["g", "G", 1, false, "sky"]],
       habits: [["gym", "g", "Gym", false, "2026-11-01"], ["old", "g", "Old", true, ""], ["bad", "g", "Bad", false, "soon"]],
       plans: [
-        ["2026-11-22", "gym", "Legs", 45],
-        ["2026-11-23", "gym", "Arms", 30],
+        ["2026-11-22", "gym", "Legs"],
+        ["2026-11-23", "gym", "Arms"],
       ],
-      plan_days: [["2026-11-22", 60, "Easy"]],
       logs: [
         ["old", "2026-11-22", "session", "gym", "", "2026-11-22T08:00:00+01:00", "2026-11-22T08:30:00+01:00", ""],
         ["keep", "2026-11-21", "counter", "", "", "2026-11-21T12:00:00+01:00", "", "", "apps", 1],
@@ -274,7 +280,7 @@ describe("roll-up", () => {
       ],
       results: [],
     });
-    expect(m.plan()).toEqual({ date: "2026-11-22", time_budget_min: 60, items: [{ habit: "gym", task: "Legs", minutes: 45 }], note: "Easy" });
+    expect(m.plan()).toEqual({ date: "2026-11-22", items: [{ habit: "gym", task: "Legs" }] });
     expect(await m.store.dirtyDays()).toEqual([]);
   });
 
@@ -377,34 +383,32 @@ describe("result checks", () => {
 
 describe("plan edits", () => {
   const plans = [
-    ["2026-11-21", "gym", "Arms", 30],
-    ["2026-11-22", "gym", "Legs", 45],
-    ["2026-11-22", "read", "", 30],
-    ["2026-11-23", "gym", "Back", 20],
+    ["2026-11-21", "gym", "Arms"],
+    ["2026-11-22", "gym", "Legs"],
+    ["2026-11-22", "read", ""],
+    ["2026-11-23", "gym", "Back"],
   ];
   const edited: Plan = {
     date: "2026-11-22",
-    time_budget_min: 60,
-    note: "",
     items: [
-      { habit: "read", task: "", minutes: 30 },
-      { habit: "gym", task: "Legs", minutes: 45 },
-      { habit: "walk", task: "", minutes: 0 },
+      { habit: "read", task: "" },
+      { habit: "gym", task: "Legs" },
+      { habit: "walk", task: "" },
     ],
   };
 
-  it("rewrite the day's rows in card order, with an out-of-plan sub-goal at 0 minutes, keeping other days", async () => {
-    const g = fakeGoogle({ plans, plan_days: [["2026-11-22", 60, ""]] });
+  it("rewrite the day's rows in card order, with an added sub-goal, keeping other days", async () => {
+    const g = fakeGoogle({ plans });
     const m = memStore(empty);
     m.editPlan(edited);
     const r = await rollUp(m.store, g.api, await g.api.open(), "2026-11-22");
     expect(r.errors).toEqual([]);
     expect(g.tabs.get("plans")!.slice(1)).toEqual([
-      ["2026-11-21", "gym", "Arms", 30],
-      ["2026-11-22", "read", "", 30],
-      ["2026-11-22", "gym", "Legs", 45],
-      ["2026-11-22", "walk", "", 0],
-      ["2026-11-23", "gym", "Back", 20],
+      ["2026-11-21", "gym", "Arms"],
+      ["2026-11-22", "read", ""],
+      ["2026-11-22", "gym", "Legs"],
+      ["2026-11-22", "walk", ""],
+      ["2026-11-23", "gym", "Back"],
     ]);
     expect(r.plan).toEqual(edited);
     expect(m.plan()).toEqual(edited);
@@ -414,14 +418,41 @@ describe("plan edits", () => {
   it("are appended for a day the check-in did not plan", async () => {
     const g = fakeGoogle({ plans: plans.slice(0, 1) });
     const m = memStore(empty);
-    const walk: Plan = { date: "2026-11-22", time_budget_min: 0, note: "", items: [{ habit: "walk", task: "", minutes: 0 }] };
+    const walk: Plan = { date: "2026-11-22", items: [{ habit: "walk", task: "" }] };
     m.editPlan(walk);
     const r = await rollUp(m.store, g.api, await g.api.open(), "2026-11-22");
     expect(g.rows("plans")).toEqual([
-      ["2026-11-21", "gym", "Arms", "30"],
-      ["2026-11-22", "walk", "", "0"],
+      ["2026-11-21", "gym", "Arms"],
+      ["2026-11-22", "walk", ""],
     ]);
     expect(r.plan).toEqual(walk);
+  });
+
+  it("rewrite an older sheet's plans without its retired minutes column and read its plan_days tab and minutes as before", async () => {
+    const g = fakeGoogle({ plans: [], plan_days: [] });
+    g.tabs.set("plans", [
+      ["date", "habit", "task", "minutes"],
+      ["2026-11-21", "gym", "Arms", 30],
+      ["2026-11-22", "gym", "Legs", 45],
+      ["2026-11-22", "read", "", 30],
+    ]);
+    g.tabs.set("plan_days", [["date", "time_budget_min", "note"], ["2026-11-22", 75, "Easy"]]);
+    const m = memStore(empty);
+    const first = await rollUp(m.store, g.api, await g.api.open(), "2026-11-22");
+    expect(first.errors).toEqual([]);
+    expect(first.plan).toEqual({ date: "2026-11-22", items: [{ habit: "gym", task: "Legs" }, { habit: "read", task: "" }] });
+
+    m.editPlan(edited);
+    const r = await rollUp(m.store, g.api, "sheet-1", "2026-11-22");
+    expect(r.errors).toEqual([]);
+    expect(g.tabs.get("plans")![0]).toEqual(["date", "habit", "task", ""]);
+    expect(g.rows("plans").map((row) => [...row, ""].slice(0, 4))).toEqual([
+      ["2026-11-21", "gym", "Arms", ""],
+      ["2026-11-22", "read", "", ""],
+      ["2026-11-22", "gym", "Legs", ""],
+      ["2026-11-22", "walk", "", ""],
+    ]);
+    expect(g.tabs.get("plan_days")).toEqual([["date", "time_budget_min", "note"], ["2026-11-22", 75, "Easy"]]);
   });
 
   it("stay on the phone and waiting when the write fails", async () => {

@@ -48,14 +48,11 @@ export interface PlanItem {
   /** The sub-goal. */
   habit: string;
   task: string;
-  minutes: number;
 }
 
 export interface Plan {
   date: string;
-  time_budget_min: number;
   items: PlanItem[];
-  note: string;
 }
 
 /** Times are ISO 8601 strings with the local offset, e.g. 2026-11-22T21:00:00+01:00. */

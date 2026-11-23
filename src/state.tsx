@@ -245,7 +245,7 @@ export function useStoaState(store: Store, initial: StoaData) {
     void sync();
   }
 
-  /** Adds a sub-goal to today's list at 0 minutes and starts its timer. */
+  /** Adds a sub-goal to today's list and starts its timer. */
   async function addAndStart(habit: string): Promise<void> {
     renewForTap();
     const items = todayItems(dataRef.current.plan, localDate(new Date()));

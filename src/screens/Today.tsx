@@ -194,19 +194,18 @@ export function TodayScreen() {
       <Header title="Today">
         <span className="muted small">{formatDuration(msToday(entries, timer, now))} today</span>
       </Header>
-      {plan?.date === today && plan.note && <p className="note muted">{plan.note}</p>}
       {items.length > 0 || orphan ? (
         <ol ref={list} className={drag ? "plan-list dragging" : "plan-list"}>
           {items.map((item, i) => card(item, i, keys[i]))}
-          {orphan && card({ habit: orphan.habit, task: orphan.task, minutes: 0 }, null, "running")}
+          {orphan && card({ habit: orphan.habit, task: orphan.task }, null, "running")}
         </ol>
       ) : (
         <section className="card">
-          <p>Nothing planned for today yet.</p>
+          <p>Nothing on today's list yet.</p>
           <p className="muted small">
             {account
-              ? "The daily check-in writes today's plan to your Stoa sheet; it loads on the next sync. Or add a sub-goal below."
-              : "Sign in with Google in Settings to load plans from the check-in, or add a sub-goal below."}
+              ? "The daily check-in writes today's list to your Stoa sheet; it loads on the next sync. Or add a sub-goal below."
+              : "Sign in with Google in Settings to load the list from the check-in, or add a sub-goal below."}
           </p>
         </section>
       )}

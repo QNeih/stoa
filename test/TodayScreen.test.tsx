@@ -55,11 +55,9 @@ const config: Config = {
 
 const plan = (date = "2026-11-23"): Plan => ({
   date,
-  time_budget_min: 90,
-  note: "",
   items: [
-    { habit: "read", task: "", minutes: 60 },
-    { habit: "write", task: "", minutes: 30 },
+    { habit: "read", task: "" },
+    { habit: "write", task: "" },
   ],
 });
 
@@ -112,7 +110,7 @@ describe("Today screen", () => {
   it("leaves yesterday's plan off the list", async () => {
     await render(new FakeStore(config, plan("2026-11-22"), null));
     expect(cards()).toHaveLength(0);
-    expect(container.textContent).toContain("Nothing planned for today yet.");
+    expect(container.textContent).toContain("Nothing on today's list yet.");
   });
 
   it("marks the running card, shows Pause and counts today's time on its sub-goal each second", async () => {
@@ -142,14 +140,14 @@ describe("Today screen", () => {
     expect(cards()[0].querySelector(".today-time")!.textContent).toBe("30m");
   });
 
-  it("adds a sub-goal that is not on the list at 0 minutes and starts it", async () => {
+  it("adds a sub-goal that is not on the list and starts it", async () => {
     await render(new FakeStore(config, plan(), null));
     await tap(container.querySelector("button.add")!);
     const picks = [...container.querySelectorAll(".sheet .pick")];
     // Read and Write are on the list, Swim is archived.
     expect(picks.map((p) => p.textContent)).toEqual(["Walk"]);
     await tap(picks[0]);
-    expect(store.plan!.items.at(-1)).toEqual({ habit: "walk", task: "", minutes: 0 });
+    expect(store.plan!.items.at(-1)).toEqual({ habit: "walk", task: "" });
     expect(store.planDirty).toBe(true);
     expect(store.timer).toMatchObject({ habit: "walk", task: "" });
     expect(names()).toEqual(["Read", "Write", "Walk"]);
@@ -173,7 +171,6 @@ describe("Today screen", () => {
     expect(names()).toEqual(["Write", "Read"]);
     await settle();
     expect(store.plan!.items.map((i) => i.habit)).toEqual(["write", "read"]);
-    expect(store.plan!.time_budget_min).toBe(90);
     expect(store.planDirty).toBe(true);
   });
 

@@ -8,7 +8,8 @@ import type { Config, LogEntry, Plan, Result, ResultCheck, StoredEntry } from ".
  * Tabs and their header rows. Rows are read by header name, written in this order. A column added
  * to a tab goes at the end of its list, so opening an older sheet only appends it to the header row.
  * Counters are retired: the `counters` tab and the `counter` and `delta` columns of `logs` stay for
- * old rows, which the app neither reads nor removes.
+ * old rows, which the app neither reads nor removes. Time planning is retired too: older sheets keep a
+ * `minutes` column on `plans` (see `RETIRED_COLUMNS`) and a `plan_days` tab, which the app ignores.
  */
 export const TABS = {
   goals: ["id", "name", "rank", "archived", "color"],
@@ -16,10 +17,15 @@ export const TABS = {
   results: ["id", "habit", "name", "type", "min_minutes", "archived"],
   result_checks: ["id", "result", "day", "checked_at", "note", "minutes_since_last", "removed_at"],
   counters: ["id", "goal", "name"],
-  plans: ["date", "habit", "task", "minutes"],
-  plan_days: ["date", "time_budget_min", "note"],
+  plans: ["date", "habit", "task"],
   logs: ["id", "day", "type", "habit", "task", "start", "end", "note", "counter", "delta"],
 } as const;
+
+/**
+ * Columns retired from the end of a tab, as how many an older sheet may still hold after the tab's
+ * header. Rewriting the tab clears them, so a stale column never sits next to rewritten rows.
+ */
+const RETIRED_COLUMNS: Partial<Record<Tab, number>> = { plans: 1 };
 
 export type Tab = keyof typeof TABS;
 export type Cell = string | number | boolean;
@@ -174,7 +180,10 @@ export class SheetsApi {
       data: tabs.map((t) => ({ range: range(t, "A1"), values: [[...TABS[t]], ...tables[t]!] })),
     });
     await this.call("POST", `${SHEETS}/${id}/values:batchClear`, {
-      ranges: tabs.map((t) => range(t, `A${tables[t]!.length + 2}:Z`)),
+      ranges: tabs.flatMap((t) => [
+        range(t, `A${tables[t]!.length + 2}:Z`),
+        ...(RETIRED_COLUMNS[t] ? [range(t, `${column(TABS[t].length)}1:${column(TABS[t].length + RETIRED_COLUMNS[t]! - 1)}`)] : []),
+      ]),
     });
   }
 }
@@ -252,23 +261,10 @@ export function configToRows(c: Config): Record<"goals" | "habits", Cell[][]> {
   };
 }
 
-/** The plan for `date`, or null when neither tab has a row for it. Without a budget row the budget is the planned total. */
-export function planFromRows(t: Pick<Tables, "plans" | "plan_days">, date: string): Plan | null {
-  const items = t.plans
-    .filter((r) => r.date?.trim() === date)
-    .map((r) => ({ habit: r.habit ?? "", task: r.task ?? "", minutes: num(r.minutes) }));
-  const day = t.plan_days.find((r) => r.date?.trim() === date);
-  if (!items.length && !day) return null;
-  const planned = items.reduce((sum, i) => sum + i.minutes, 0);
-  return { date, time_budget_min: day ? num(day.time_budget_min, planned) : planned, items, note: day?.note ?? "" };
-}
-
-/** A `plans` row in header order, with minutes as a number when the cell holds one. */
-export function planCells(r: Row): Cell[] {
-  const cells = rowCells("plans", r);
-  const minutes = (r.minutes ?? "").trim();
-  if (minutes !== "" && Number.isFinite(Number(minutes))) cells[TABS.plans.indexOf("minutes")] = Number(minutes);
-  return cells;
+/** The plan for `date`: its `plans` rows in order, or null when it has none. */
+export function planFromRows(plans: Tables["plans"], date: string): Plan | null {
+  const items = plans.filter((r) => r.date?.trim() === date).map((r) => ({ habit: r.habit ?? "", task: r.task ?? "" }));
+  return items.length ? { date, items } : null;
 }
 
 /**
@@ -276,7 +272,7 @@ export function planCells(r: Row): Cell[] {
  * that date's first row was (at the end when it had none). Rows of other dates stay as they are.
  */
 export function mergePlan(remote: Row[], plan: Plan): Row[] {
-  const mine: Row[] = plan.items.map((i) => ({ date: plan.date, habit: i.habit, task: i.task, minutes: String(i.minutes) }));
+  const mine: Row[] = plan.items.map((i) => ({ date: plan.date, habit: i.habit, task: i.task }));
   const out: Row[] = [];
   let placed = false;
   for (const r of remote) {

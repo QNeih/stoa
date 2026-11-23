@@ -14,7 +14,6 @@ import {
   logOrder,
   mergePlan,
   mergeResults,
-  planCells,
   planFromRows,
   rowCells,
   type Cell,
@@ -150,7 +149,7 @@ async function pushPlan(store: SyncStore, api: SheetsApi, sheetId: string, remot
   if (!plan) return remote;
   try {
     const rows = mergePlan(remote, plan);
-    const cells = rows.map(planCells);
+    const cells = rows.map((r) => rowCells("plans", r));
     if (!same(cells, remote.map((r) => rowCells("plans", r)))) await api.write(sheetId, { plans: cells });
     return rows;
   } catch (e) {
@@ -161,7 +160,7 @@ async function pushPlan(store: SyncStore, api: SheetsApi, sheetId: string, remot
 
 export async function rollUp(store: SyncStore, api: SheetsApi, sheetId: string, today: string): Promise<RollUpResult> {
   const result: RollUpResult = { pushedDays: [], configPushed: false, plan: null, errors: [] };
-  const remote = await api.read(sheetId, ["logs", "result_checks", "goals", "habits", "results", "plans", "plan_days"]);
+  const remote = await api.read(sheetId, ["logs", "result_checks", "goals", "habits", "results", "plans"]);
 
   try {
     result.pushedDays = await pushDays(store, api, sheetId, remote);
@@ -185,7 +184,7 @@ export async function rollUp(store: SyncStore, api: SheetsApi, sheetId: string, 
   // A plan still waiting to be written (failed push, or edited meanwhile) stays as the phone has it.
   if (await store.isPlanDirty()) result.plan = await store.getPlan();
   else {
-    result.plan = planFromRows({ plans, plan_days: remote.plan_days }, today);
+    result.plan = planFromRows(plans, today);
     await store.setPlan(result.plan, false);
   }
   return result;

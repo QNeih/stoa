@@ -99,7 +99,11 @@ export class Store implements SyncStore {
   setAccount = (a: Account | null) => this.kvSet("account", a);
   getTimer = () => this.kvGet<RunningTimer | null>("timer", null);
   setTimer = (t: RunningTimer | null) => this.kvSet("timer", t);
-  getPlan = () => this.kvGet<Plan | null>("plan", null);
+  /** The stored plan; one stored before time planning was dropped still carries minutes, a budget and a note, which are left out. */
+  async getPlan(): Promise<Plan | null> {
+    const p = await this.kvGet<Plan | null>("plan", null);
+    return p && { date: p.date, items: p.items.map((i) => ({ habit: i.habit, task: i.task })) };
+  }
   isPlanDirty = () => this.kvGet<boolean>("planDirty", false);
 
   /** Stores the plan; `dirty` when the phone changed it (reorder, an added sub-goal), so a roll-up writes it. */
