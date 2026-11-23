@@ -5,6 +5,7 @@ import type { PaletteKey } from "./palette";
 import { AuthError, forgetToken, getAccessToken, loadGis, renewOnTap } from "./googleAuth";
 import { toContract } from "./logs";
 import { ApiError, SheetsApi } from "./sheets";
+import { minutesSinceLastCheck, standingCheck } from "./results";
 import { restore, rollUp } from "./sync";
 import { isoLocal, localDate, validateStart } from "./time";
 import { addedItem, moveItem, switchTimer, timerSession, todayItems, withItems } from "./today";
@@ -268,6 +269,44 @@ export function useStoaState(store: Store, initial: StoaData) {
     await reload();
   }
 
+  // --- results ---
+
+  /**
+   * Checks a manual result as done today, with an optional note and the sub-goal time since the last
+   * check of any of its results (the running timer counts up to now). A result checked today stays as is.
+   */
+  async function checkResult(resultId: string, note = ""): Promise<void> {
+    renewForTap();
+    const { config, checks, entries, timer } = dataRef.current;
+    const result = config.results.find((r) => r.id === resultId);
+    const habit = config.habits.find((h) => h.id === result?.habit);
+    if (!result || result.type !== "manual" || !habit) return;
+    const now = new Date();
+    const day = localDate(now);
+    if (standingCheck(checks, resultId, day)) return;
+    const tracked = timer ? [...entries, timerSession(timer, now)] : entries;
+    await store.addCheck({
+      result: resultId,
+      day,
+      checked_at: isoLocal(now),
+      note: note.trim(),
+      minutes_since_last: minutesSinceLastCheck(config.results, habit, checks, tracked, now),
+      removed_at: "",
+    });
+    await reload();
+    void sync();
+  }
+
+  /** Undoes a manual result's check on `day`: the check stays, with the time it was undone. */
+  async function uncheckResult(resultId: string, day: string): Promise<void> {
+    renewForTap();
+    const check = standingCheck(dataRef.current.checks, resultId, day);
+    if (check?.id === undefined) return;
+    await store.removeCheck(check.id, isoLocal(new Date()));
+    await reload();
+    void sync();
+  }
+
   // --- config ---
 
   async function editConfig(change: (c: Config) => Config): Promise<void> {
@@ -396,6 +435,8 @@ export function useStoaState(store: Store, initial: StoaData) {
     addAndStart,
     saveSession,
     deleteEntry,
+    checkResult,
+    uncheckResult,
     setHabitArchived,
     renameGoal,
     setGoalColor,

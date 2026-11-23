@@ -1,6 +1,195 @@
-import { Placeholder } from "./Placeholder";
+import { useState, type CSSProperties, type ReactNode } from "react";
+import { Header } from "../components/Header";
+import { activeGoals } from "../format";
+import { PALETTE, goalColor } from "../palette";
+import { doneResults, type DoneResult } from "../results";
+import { useStoa } from "../state";
+import { daysBetween, formatDuration, localDate, parseLocalDate } from "../time";
+import { msToday } from "../today";
+import type { Config, Goal, Result } from "../types";
 
-/** Results of the sub-goals and their checks. Not built yet. */
+/** Done entries older than this many days wait behind "Show older". */
+const DAYS_SHOWN = 14;
+
+/** Results that show: not archived, on a sub-goal that is not archived, of a goal that is not archived. */
+function visibleResults(config: Config): Result[] {
+  const goals = new Set(activeGoals(config).map((g) => g.id));
+  const habits = new Set(config.habits.filter((h) => !h.archived && goals.has(h.goal)).map((h) => h.id));
+  return config.results.filter((r) => !r.archived && habits.has(r.habit));
+}
+
+const goalStyle = (goal: Goal) => ({ "--goal": PALETTE[goalColor(goal)] }) as CSSProperties;
+
+/** "Today", "Yesterday", or a short date such as "Sat 21 Nov". */
+function dayText(day: string, today: string): string {
+  const ago = daysBetween(day, today);
+  if (ago === 0) return "Today";
+  if (ago === 1) return "Yesterday";
+  return parseLocalDate(day).toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
+}
+
+/**
+ * Rows grouped by goal (a headline, in rank order) and sub-goal (a divider with its name, in config
+ * order). Goals and sub-goals without rows are left out.
+ */
+function Grouped<T>({ config, items, habitOf, row }: { config: Config; items: T[]; habitOf: (t: T) => string; row: (t: T) => ReactNode }) {
+  return activeGoals(config).map((goal) => {
+    const habits = config.habits
+      .filter((h) => h.goal === goal.id)
+      .map((h) => ({ habit: h, rows: items.filter((t) => habitOf(t) === h.id) }))
+      .filter((x) => x.rows.length);
+    if (!habits.length) return null;
+    return (
+      <section key={goal.id} className="result-goal" style={goalStyle(goal)}>
+        <h3 className="goal-headline">
+          <span className="dot" />
+          {goal.name}
+        </h3>
+        {habits.map(({ habit, rows }) => (
+          <div key={habit.id}>
+            <div className="divider">
+              <span>{habit.name}</span>
+            </div>
+            <ul className="result-list">{rows.map(row)}</ul>
+          </div>
+        ))}
+      </section>
+    );
+  });
+}
+
+/**
+ * The one place where results are checked and unchecked. Open results come first: manual ones with a
+ * checkbox (checking offers an optional note), automatic ones with today's progress toward their
+ * minimum. The done list below holds standing checks and the days automatic results were reached.
+ */
 export function ResultsScreen() {
-  return <Placeholder title="Results" />;
+  const { config, checks, entries, timer, checkResult, uncheckResult } = useStoa();
+  const [noteFor, setNoteFor] = useState<string | null>(null);
+  const [note, setNote] = useState("");
+  const [showAll, setShowAll] = useState(false);
+  const now = new Date();
+  const today = localDate(now);
+
+  const results = visibleResults(config);
+  const byId = new Map(results.map((r) => [r.id, r]));
+  const done = doneResults(results, checks, entries).reverse();
+  const doneToday = new Set(done.filter((d) => d.day === today).map((d) => d.result));
+  const open = results.filter((r) => !doneToday.has(r.id));
+  const shownDone = showAll ? done : done.filter((d) => daysBetween(d.day, today) < DAYS_SHOWN);
+
+  const startCheck = (id: string) => {
+    setNote("");
+    setNoteFor(noteFor === id ? null : id);
+  };
+  const save = (id: string, text: string) => {
+    setNoteFor(null);
+    void checkResult(id, text);
+  };
+
+  const openRow = (r: Result) => {
+    if (r.type === "auto") {
+      const minutes = Math.floor(msToday(entries, timer, now, r.habit) / 60_000);
+      return (
+        <li key={r.id} className="result auto">
+          <span className="result-name">{r.name}</span>
+          <span className="muted small">
+            {minutes} / {r.min_minutes} min today
+          </span>
+        </li>
+      );
+    }
+    const noting = noteFor === r.id;
+    return (
+      <li key={r.id} className="result">
+        <label className="check">
+          <input type="checkbox" checked={noting} onChange={() => startCheck(r.id)} />
+          <span className="result-name">{r.name}</span>
+        </label>
+        {noting && (
+          <form
+            className="note-sheet"
+            onSubmit={(e) => {
+              e.preventDefault();
+              save(r.id, note);
+            }}
+          >
+            <input aria-label="Note" placeholder="Note (optional)" value={note} autoFocus onChange={(e) => setNote(e.target.value)} />
+            <div className="actions">
+              <button type="submit" className="primary">
+                Save
+              </button>
+              <button type="button" onClick={() => save(r.id, "")}>
+                Skip note
+              </button>
+            </div>
+          </form>
+        )}
+      </li>
+    );
+  };
+
+  const doneRow = (d: DoneResult) => {
+    const r = byId.get(d.result)!;
+    const when = dayText(d.day, today);
+    if (d.type === "auto") {
+      return (
+        <li key={`auto-${d.result}-${d.day}`} className="result auto done">
+          <span className="tick" aria-hidden="true">
+            ✓
+          </span>
+          <div className="result-body">
+            <span className="result-name">{r.name}</span>
+            <div className="muted small">
+              {when} · {formatDuration(d.ms)} ·{" "}
+              <a className="edit-log" href="#/log">
+                edit in Log
+              </a>
+            </div>
+          </div>
+        </li>
+      );
+    }
+    return (
+      <li key={d.check.uid} className="result done">
+        <label className="check">
+          <input type="checkbox" checked aria-label={`Uncheck ${r.name}`} onChange={() => void uncheckResult(d.result, d.day)} />
+          <div className="result-body">
+            <span className="result-name">{r.name}</span>
+            <div className="muted small">{when}</div>
+            {d.check.note && <div className="note small">{d.check.note}</div>}
+          </div>
+        </label>
+      </li>
+    );
+  };
+
+  return (
+    <div>
+      <Header title="Results" />
+      {!results.length ? (
+        <p className="muted">No results yet. The daily check-in adds them to your Stoa sheet; they load on the next sync.</p>
+      ) : (
+        <>
+          <h2>Open</h2>
+          {open.length ? (
+            <Grouped config={config} items={open} habitOf={(r) => r.habit} row={openRow} />
+          ) : (
+            <p className="muted small">Everything is done for today.</p>
+          )}
+          <h2>Done</h2>
+          {shownDone.length ? (
+            <Grouped config={config} items={shownDone} habitOf={(d) => byId.get(d.result)!.habit} row={doneRow} />
+          ) : (
+            <p className="muted small">Nothing done yet.</p>
+          )}
+          {done.length > shownDone.length && (
+            <button className="link" onClick={() => setShowAll(true)}>
+              Show older
+            </button>
+          )}
+        </>
+      )}
+    </div>
+  );
 }

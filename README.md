@@ -11,7 +11,11 @@ It is an installable offline web app (PWA): React and TypeScript, IndexedDB, and
   Forgot to start? Change the running timer's start (up to 24 hours back). The timer survives closing the app; after 4 hours a
   reopened app asks "still going?", where an earlier end can be set. "+ Add" puts another sub-goal on today's list and starts it.
 - **Time**: stacked bar chart of time per week, month or year by goal (a range shows once the first session is before the current week, month or year). The all-time total sits above it; tap a bar for its minutes per goal.
-- **Results**: coming next.
+- **Results**: the only place where results are checked and unchecked, grouped by goal and then by sub-goal; archived ones are hidden.
+  Open results come first: a manual result has a checkbox, and checking it offers an optional note (Skip note checks it in one tap).
+  An automatic result shows today's progress toward its minimum instead. Below, the done list shows each day a result was done:
+  manual checks with their note can be unchecked, which reopens a result checked today; automatic days follow the sessions
+  ("edit in Log"). A manual result can be checked once a day. Done entries older than 14 days wait behind "Show older".
 - **Goals**: cards by time this week, with the change against the same span last week, the all-time total and a "Neglected" marker after 7 days without time. Tap a card for the goal: a time chart (week, month, year), time per sub-goal and each automatic result's total. Long-press a card (or use the menu on the goal) to rename, change colour or archive; archived goals and sub-goals are hidden, still counted, and restorable. Goals and sub-goals come from the daily check-in, not the app.
 - **Log**: add a past session, fix it (note included) or delete it.
 - **Settings** (the gear at the top): Sign in with Google (or the signed-in email and Sign out), Sync now, and Export (one JSON file as a backup).
@@ -20,7 +24,7 @@ It is an installable offline web app (PWA): React and TypeScript, IndexedDB, and
 
 Live state stays on the phone; logging and the timer never wait for the network or sign-in.
 A roll-up writes changed days to a spreadsheet named "Stoa" in the user's own Google Drive.
-It runs when the app opens, after a session ends, after a change to goals, sub-goals or today's list, and from Sync now.
+It runs when the app opens, after a session ends, after a change to goals, sub-goals or today's list, after a result is checked or unchecked, and from Sync now.
 
 ### Sign-in
 
@@ -49,7 +53,8 @@ A newer app version adds its new columns to the end of an existing tab's header 
   worked out on the phone and never stored.
 - `result_checks`: id, result, day, checked_at, note, minutes_since_last, removed_at. Written by the app when a
   manual result is checked; unchecking fills `removed_at` and keeps the row. A roll-up replaces the rows of each
-  changed day, like `logs`. `minutes_since_last` is the sub-goal time since the result's previous check.
+  changed day, like `logs`. `minutes_since_last` is the sub-goal time since the previous check of any of its results
+  (or since the sub-goal was created, for its first check).
 - `plans`: date, habit, task, minutes (one row per item; row order is the card order). `plan_days`: date,
   time_budget_min, note. Written by the daily check-in. The app may reorder a day's rows and add a sub-goal
   at 0 minutes; it then rewrites that day's rows. Without a `plan_days` row the budget is the planned total.
@@ -67,7 +72,7 @@ from `result_checks`; a phone that had sessions writes all its days.
 ```sh
 npm install
 npm run dev       # http://localhost:5173
-npm test          # unit tests for time, stats, results, Today, palette, log helpers and roll-up (fake Sheets API), plus Today and Time screen checks
+npm test          # unit tests for time, stats, results, Today, palette, log helpers and roll-up (fake Sheets API), plus Today, Time and Results screen checks
 npm run build     # typecheck and build to dist/
 npm run preview   # serve dist/ at http://localhost:4173 (service worker on)
 npm run icons     # redraw the PNG icons in public/
