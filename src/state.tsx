@@ -3,7 +3,7 @@ import { createContext, useContext, useEffect, useEffectEvent, useReducer, useRe
 import type { Account, Store, SyncStatus } from "./db";
 import type { PaletteKey } from "./palette";
 import { AuthError, forgetToken, getAccessToken, loadGis, renewOnTap } from "./googleAuth";
-import { slugify, toContract } from "./logs";
+import { toContract } from "./logs";
 import type { OverlapFix } from "./overlap";
 import { ApiError, SheetsApi } from "./sheets";
 import { minutesSinceLastCheck, standingCheckByUid } from "./results";
