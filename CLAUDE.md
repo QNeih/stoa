@@ -20,6 +20,6 @@ Offline PWA for tracking time on goals. See `README.md` for features, sign-in an
 ## Rules
 
 - The app improves continuously; there is no frozen scope. Accounts are Google sign-in with one sheet per user in their own Drive, nothing more. Forgotten-timer reminders are out for now (the still-going check on reopen stays).
-- No tokens, secrets or personal data in this repo (the OAuth client id is public). The access token lives in memory only, never in IndexedDB; personal data lives in each user's sheet.
+- No tokens, secrets or personal data in this repo (the OAuth client id is public). The owner's own sheet id, for editing their sheet with the Google Sheets tools, is in the environment variable `STOA_SHEET_ID`, never in the repo. The access token lives in memory only, never in IndexedDB; personal data lives in each user's sheet.
 - The CSP in `vite.config.ts` allows only Google sign-in and the Drive and Sheets APIs; widen it only for a call the app really makes.
 - Run `npm test` and `npm run build` before committing.
