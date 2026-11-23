@@ -106,6 +106,7 @@ function memStore(initial: Config, initialDirty = false) {
   let config = initial;
   let configDirty = initialDirty;
   let plan: Plan | null = null;
+  let planDirty = false;
   const entries: StoredEntry[] = [];
   const checks: ResultCheck[] = [];
   const dirty = new Set<string>();
@@ -121,8 +122,11 @@ function memStore(initial: Config, initialDirty = false) {
       config = c;
       configDirty = d;
     },
-    setPlan: async (p) => {
+    getPlan: async () => plan,
+    isPlanDirty: async () => planDirty,
+    setPlan: async (p, d) => {
       plan = p;
+      planDirty = d;
     },
     hasEntries: async () => entries.length > 0,
     importEntries: async (es) => void entries.push(...es.map((e) => ({ ...e, day: dayOf(e) }))),
@@ -142,7 +146,12 @@ function memStore(initial: Config, initialDirty = false) {
     c.removed_at = at;
     dirty.add(c.day);
   };
-  return { store, add, addCheck, uncheck, entries, checks, dirty, plan: () => plan, config: () => config };
+  /** A plan the phone reordered or extended. */
+  const editPlan = (p: Plan) => {
+    plan = p;
+    planDirty = true;
+  };
+  return { store, add, addCheck, uncheck, editPlan, entries, checks, dirty, plan: () => plan, config: () => config };
 }
 
 const empty: Config = { goals: [], habits: [], results: [] };
@@ -363,6 +372,67 @@ describe("result checks", () => {
     expect(g.written).toEqual(["result_checks"]);
     expect(g.rows("result_checks")).toEqual([checkRow]);
     expect(await m.store.dirtyDays()).toEqual([]);
+  });
+});
+
+describe("plan edits", () => {
+  const plans = [
+    ["2026-11-21", "gym", "Arms", 30],
+    ["2026-11-22", "gym", "Legs", 45],
+    ["2026-11-22", "read", "", 30],
+    ["2026-11-23", "gym", "Back", 20],
+  ];
+  const edited: Plan = {
+    date: "2026-11-22",
+    time_budget_min: 60,
+    note: "",
+    items: [
+      { habit: "read", task: "", minutes: 30 },
+      { habit: "gym", task: "Legs", minutes: 45 },
+      { habit: "walk", task: "", minutes: 0 },
+    ],
+  };
+
+  it("rewrite the day's rows in card order, with an out-of-plan sub-goal at 0 minutes, keeping other days", async () => {
+    const g = fakeGoogle({ plans, plan_days: [["2026-11-22", 60, ""]] });
+    const m = memStore(empty);
+    m.editPlan(edited);
+    const r = await rollUp(m.store, g.api, await g.api.open(), "2026-11-22");
+    expect(r.errors).toEqual([]);
+    expect(g.tabs.get("plans")!.slice(1)).toEqual([
+      ["2026-11-21", "gym", "Arms", 30],
+      ["2026-11-22", "read", "", 30],
+      ["2026-11-22", "gym", "Legs", 45],
+      ["2026-11-22", "walk", "", 0],
+      ["2026-11-23", "gym", "Back", 20],
+    ]);
+    expect(r.plan).toEqual(edited);
+    expect(m.plan()).toEqual(edited);
+    expect(await m.store.isPlanDirty()).toBe(false);
+  });
+
+  it("are appended for a day the check-in did not plan", async () => {
+    const g = fakeGoogle({ plans: plans.slice(0, 1) });
+    const m = memStore(empty);
+    const walk: Plan = { date: "2026-11-22", time_budget_min: 0, note: "", items: [{ habit: "walk", task: "", minutes: 0 }] };
+    m.editPlan(walk);
+    const r = await rollUp(m.store, g.api, await g.api.open(), "2026-11-22");
+    expect(g.rows("plans")).toEqual([
+      ["2026-11-21", "gym", "Arms", "30"],
+      ["2026-11-22", "walk", "", "0"],
+    ]);
+    expect(r.plan).toEqual(walk);
+  });
+
+  it("stay on the phone and waiting when the write fails", async () => {
+    const g = fakeGoogle({ plans }, true);
+    const m = memStore(empty);
+    m.editPlan(edited);
+    const r = await rollUp(m.store, g.api, "sheet-1", "2026-11-22");
+    expect(r.errors[0]).toContain("500 backend error");
+    expect(r.plan).toEqual(edited);
+    expect(m.plan()).toEqual(edited);
+    expect(await m.store.isPlanDirty()).toBe(true);
   });
 });
 

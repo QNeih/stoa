@@ -24,7 +24,7 @@ export interface StoaData {
   /** The Google account to sync with; null when signed out. */
   account: Account | null;
   syncStatus: SyncStatus | null;
-  /** Days plus config waiting to be written to the sheet. */
+  /** Days, config and plan waiting to be written to the sheet. */
   pending: number;
 }
 
@@ -34,7 +34,7 @@ export interface ToastMessage {
 }
 
 export async function loadData(store: Store): Promise<StoaData> {
-  const [config, entries, checks, timer, plan, account, syncStatus, dirtyDays, configDirty] = await Promise.all([
+  const [config, entries, checks, timer, plan, account, syncStatus, dirtyDays, configDirty, planDirty] = await Promise.all([
     store.getConfig(),
     store.allEntries(),
     store.allChecks(),
@@ -44,8 +44,9 @@ export async function loadData(store: Store): Promise<StoaData> {
     store.getSyncStatus(),
     store.dirtyDays(),
     store.isConfigDirty(),
+    store.isPlanDirty(),
   ]);
-  return { config, entries, checks, timer, plan, account, syncStatus, pending: dirtyDays.length + (configDirty ? 1 : 0) };
+  return { config, entries, checks, timer, plan, account, syncStatus, pending: dirtyDays.length + (configDirty ? 1 : 0) + (planDirty ? 1 : 0) };
 }
 
 /** Saves a timer as a session that ends at `end`, at least one minute long. */

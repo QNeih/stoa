@@ -263,6 +263,33 @@ export function planFromRows(t: Pick<Tables, "plans" | "plan_days">, date: strin
   return { date, time_budget_min: day ? num(day.time_budget_min, planned) : planned, items, note: day?.note ?? "" };
 }
 
+/** A `plans` row in header order, with minutes as a number when the cell holds one. */
+export function planCells(r: Row): Cell[] {
+  const cells = rowCells("plans", r);
+  const minutes = (r.minutes ?? "").trim();
+  if (minutes !== "" && Number.isFinite(Number(minutes))) cells[TABS.plans.indexOf("minutes")] = Number(minutes);
+  return cells;
+}
+
+/**
+ * The `plans` rows with the rows of the plan's date replaced by its items in card order, placed where
+ * that date's first row was (at the end when it had none). Rows of other dates stay as they are.
+ */
+export function mergePlan(remote: Row[], plan: Plan): Row[] {
+  const mine: Row[] = plan.items.map((i) => ({ date: plan.date, habit: i.habit, task: i.task, minutes: String(i.minutes) }));
+  const out: Row[] = [];
+  let placed = false;
+  for (const r of remote) {
+    if (r.date?.trim() !== plan.date) out.push(r);
+    else if (!placed) {
+      out.push(...mine);
+      placed = true;
+    }
+  }
+  if (!placed) out.push(...mine);
+  return out;
+}
+
 /** A session as a `logs` row. */
 export function entryToRow(e: StoredEntry): Cell[] {
   return [e.uid, e.day, "session", e.habit, e.task, e.start, e.end, e.note, "", ""];

@@ -12,7 +12,9 @@ import {
   entryToRow,
   isSessionRow,
   logOrder,
+  mergePlan,
   mergeResults,
+  planCells,
   planFromRows,
   rowCells,
   type Cell,
@@ -32,7 +34,10 @@ export interface SyncStore {
   getConfig(): Promise<Config>;
   isConfigDirty(): Promise<boolean>;
   setConfig(config: Config, dirty: boolean): Promise<void>;
-  setPlan(plan: Plan | null): Promise<void>;
+  getPlan(): Promise<Plan | null>;
+  /** Whether the phone reordered or extended its plan since the last roll-up. */
+  isPlanDirty(): Promise<boolean>;
+  setPlan(plan: Plan | null, dirty: boolean): Promise<void>;
   hasEntries(): Promise<boolean>;
   importEntries(entries: (LogEntry & { uid: string })[]): Promise<void>;
   hasChecks(): Promise<boolean>;
@@ -133,6 +138,27 @@ async function syncConfig(store: SyncStore, api: SheetsApi, sheetId: string, rem
   }
 }
 
+/**
+ * Writes a plan reordered or extended on the phone into its date's `plans` rows. Returns the `plans`
+ * rows as they now stand in the sheet. On failure the plan stays dirty.
+ */
+async function pushPlan(store: SyncStore, api: SheetsApi, sheetId: string, remote: Tables["plans"]): Promise<Tables["plans"]> {
+  if (!(await store.isPlanDirty())) return remote;
+  const plan = await store.getPlan();
+  // Unmark before writing so an edit made during the push marks the plan again.
+  await store.setPlan(plan, false);
+  if (!plan) return remote;
+  try {
+    const rows = mergePlan(remote, plan);
+    const cells = rows.map(planCells);
+    if (!same(cells, remote.map((r) => rowCells("plans", r)))) await api.write(sheetId, { plans: cells });
+    return rows;
+  } catch (e) {
+    if (!(await store.isPlanDirty())) await store.setPlan(plan, true);
+    throw e;
+  }
+}
+
 export async function rollUp(store: SyncStore, api: SheetsApi, sheetId: string, today: string): Promise<RollUpResult> {
   const result: RollUpResult = { pushedDays: [], configPushed: false, plan: null, errors: [] };
   const remote = await api.read(sheetId, ["logs", "result_checks", "goals", "habits", "results", "plans", "plan_days"]);
@@ -149,8 +175,19 @@ export async function rollUp(store: SyncStore, api: SheetsApi, sheetId: string, 
     result.errors.push(message(e));
   }
 
-  result.plan = planFromRows(remote, today);
-  await store.setPlan(result.plan);
+  let plans = remote.plans;
+  try {
+    plans = await pushPlan(store, api, sheetId, remote.plans);
+  } catch (e) {
+    result.errors.push(message(e));
+  }
+
+  // A plan still waiting to be written (failed push, or edited meanwhile) stays as the phone has it.
+  if (await store.isPlanDirty()) result.plan = await store.getPlan();
+  else {
+    result.plan = planFromRows({ plans, plan_days: remote.plan_days }, today);
+    await store.setPlan(result.plan, false);
+  }
   return result;
 }
 

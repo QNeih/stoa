@@ -100,7 +100,14 @@ export class Store implements SyncStore {
   getTimer = () => this.kvGet<RunningTimer | null>("timer", null);
   setTimer = (t: RunningTimer | null) => this.kvSet("timer", t);
   getPlan = () => this.kvGet<Plan | null>("plan", null);
-  setPlan = (p: Plan | null) => this.kvSet("plan", p);
+  isPlanDirty = () => this.kvGet<boolean>("planDirty", false);
+
+  /** Stores the plan; `dirty` when the phone changed it (reorder, an added sub-goal), so a roll-up writes it. */
+  async setPlan(p: Plan | null, dirty = false): Promise<void> {
+    await this.kvSet("plan", p);
+    await this.kvSet("planDirty", dirty);
+  }
+
   getSyncStatus = () => this.kvGet<SyncStatus | null>("syncStatus", null);
   setSyncStatus = (s: SyncStatus) => this.kvSet("syncStatus", s);
   getConfig = async () => normalizeConfig(await this.kvGet<Partial<Config> | undefined>("config", undefined));
