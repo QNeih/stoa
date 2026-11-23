@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { Header } from "../components/Header";
 import { HabitSelect } from "../components/HabitSelect";
+import { TrashIcon } from "../components/Icons";
 import { OverlapWarning, savedOverlaps } from "../components/OverlapWarning";
 import { toLocalInput } from "../format";
 import type { OverlapFix } from "../overlap";
@@ -96,6 +97,7 @@ export function SessionForm({ id, draft, onDone }: { id?: number; draft?: Sessio
         )}
         {existing && (
           <button type="button" className="danger" onClick={() => void remove()}>
+            <TrashIcon />
             Delete
           </button>
         )}

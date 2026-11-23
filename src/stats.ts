@@ -14,7 +14,7 @@ export interface GoalStats {
   goal: string;
   /** Monday 00:00 until now. */
   weekMs: number;
-  /** The same span a week earlier: last Monday 00:00 until this time 7 days ago. */
+  /** All of last week: last Monday 00:00 until this Monday 00:00. */
   lastWeekMs: number;
   allTimeMs: number;
   /** No time on the goal today or in the 6 days before. */
@@ -37,7 +37,7 @@ function addDays(d: Date, days: number): Date {
 }
 
 /**
- * Time per active goal and its sub-goals: this week, the same span last week, and all time, plus
+ * Time per active goal and its sub-goals: this week, all of last week, and all time, plus
  * whether the goal went without time for the last 7 days. Most time this week first, then by rank.
  * A session counts for the goal its sub-goal belongs to now.
  */
@@ -45,7 +45,6 @@ export function goalStats(config: Config, entries: LogEntry[], now: Date): GoalS
   const today = localDate(now);
   const weekStart = startOfWeek(now).getTime();
   const lastWeekStart = addDays(startOfWeek(now), -7).getTime();
-  const lastWeekEnd = addDays(now, -7).getTime();
   const sevenDaysStart = localDate(addDays(now, -6));
   const habitStats = new Map(config.habits.map((h) => [h.id, { habit: h.id, weekMs: 0, lastWeekMs: 0, allTimeMs: 0 }]));
   const lastDay = new Map<string, string>();
@@ -54,7 +53,7 @@ export function goalStats(config: Config, entries: LogEntry[], now: Date): GoalS
     const st = habitStats.get(s.habit);
     if (!st) continue;
     st.weekMs += overlapMs(s, weekStart, now.getTime());
-    st.lastWeekMs += overlapMs(s, lastWeekStart, lastWeekEnd);
+    st.lastWeekMs += overlapMs(s, lastWeekStart, weekStart);
     st.allTimeMs += overlapMs(s, -Infinity, now.getTime());
     for (const p of splitByDay(new Date(s.start), new Date(s.end))) {
       if (p.ms > 0 && p.day <= today && (lastDay.get(s.habit) ?? "") < p.day) lastDay.set(s.habit, p.day);
@@ -88,12 +87,15 @@ export function goalStats(config: Config, entries: LogEntry[], now: Date): GoalS
 
 // --- time per bucket ---
 
-/** Bucket size of the time chart: one bar per week, month or year. */
-export type Range = "week" | "month" | "year";
-export const RANGES: Range[] = ["week", "month", "year"];
+/** Bucket size of the time chart: one bar per day, week, month or year. */
+export type Range = "day" | "week" | "month" | "year";
+export const RANGES: Range[] = ["day", "week", "month", "year"];
+
+/** How many buckets a chart shows by default: two weeks of days, otherwise 12. */
+export const MAX_BUCKETS: Record<Range, number> = { day: 14, week: 12, month: 12, year: 12 };
 
 export interface Bucket {
-  /** First day of the bucket: a Monday, the 1st of a month, or January 1st. */
+  /** First day of the bucket: the day itself, a Monday, the 1st of a month, or January 1st. */
   start: string;
   /** Time per goal id (archived goals included); goals without time are left out. */
   byGoal: Record<string, number>;
@@ -102,6 +104,7 @@ export interface Bucket {
 
 /** The first day of the bucket that holds `day`. */
 function bucketStart(day: string, range: Range): string {
+  if (range === "day") return day;
   if (range === "week") return localDate(startOfWeek(parseLocalDate(day)));
   return range === "month" ? `${day.slice(0, 7)}-01` : `${day.slice(0, 4)}-01-01`;
 }
@@ -109,7 +112,8 @@ function bucketStart(day: string, range: Range): string {
 /** The first day of the bucket after the one starting on `start`. */
 function nextBucket(start: string, range: Range): string {
   const d = parseLocalDate(start);
-  if (range === "week") d.setDate(d.getDate() + 7);
+  if (range === "day") d.setDate(d.getDate() + 1);
+  else if (range === "week") d.setDate(d.getDate() + 7);
   else if (range === "month") d.setMonth(d.getMonth() + 1);
   else d.setFullYear(d.getFullYear() + 1);
   return localDate(d);
@@ -126,11 +130,11 @@ function firstDay(entries: LogEntry[]): string | null {
 }
 
 /**
- * Time per week, month or year, stacked by goal, from the bucket of the first session up to the
- * current one (empty buckets included), at most the last `max`. Sessions are split at local midnight;
+ * Time per day, week, month or year, by goal, from the bucket of the first session up to the
+ * current one (empty buckets included), at most the last `max` (see `MAX_BUCKETS`). Sessions are split at local midnight;
  * a session counts for the goal its sub-goal belongs to now. Empty without sessions.
  */
-export function timeBuckets(config: Config, entries: LogEntry[], range: Range, now: Date, max = 12): Bucket[] {
+export function timeBuckets(config: Config, entries: LogEntry[], range: Range, now: Date, max = MAX_BUCKETS[range]): Bucket[] {
   const first = firstDay(entries);
   if (!first) return [];
   const today = localDate(now);
@@ -151,8 +155,8 @@ export function timeBuckets(config: Config, entries: LogEntry[], range: Range, n
 }
 
 /**
- * The ranges with enough data to compare: the first session lies before the current week, month or
- * year, so the chart has at least two buckets.
+ * The ranges with enough data to compare: the first session lies before the current day, week, month
+ * or year, so the chart has at least two buckets.
  */
 export function rangesWithData(entries: LogEntry[], now: Date): Range[] {
   const first = firstDay(entries);

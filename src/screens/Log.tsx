@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 import { Header } from "../components/Header";
+import { PenIcon, TrashIcon } from "../components/Icons";
 import { OverlapWarning, savedOverlaps } from "../components/OverlapWarning";
 import { habitName } from "../format";
 import { firstPageStart, olderPageStart } from "../logs";
@@ -207,6 +208,7 @@ function EntryMenu({ entry, name, onClose }: { entry: StoredEntry; name: string;
           {name} {formatTime(new Date(entry.start))}–{formatTime(new Date(entry.end))}
         </h2>
         <button className="pick" onClick={() => (location.hash = `#/log/edit/${entry.id}`)}>
+          <PenIcon />
           Edit
         </button>
         <button
@@ -216,6 +218,7 @@ function EntryMenu({ entry, name, onClose }: { entry: StoredEntry; name: string;
             void deleteEntry(entry.id!);
           }}
         >
+          <TrashIcon />
           Delete
         </button>
         <button className="link" onClick={onClose}>

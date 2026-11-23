@@ -76,16 +76,16 @@ describe("Time screen", () => {
 
   it("offers only ranges with data, week selected first", async () => {
     await render([session("read", "2026-11-16", 60), session("walk", "2026-11-23", 30)]);
-    expect(rangeButtons().map((b) => b.textContent)).toEqual(["Week"]);
-    expect(rangeButtons()[0].getAttribute("aria-pressed")).toBe("true");
+    expect(rangeButtons().map((b) => b.textContent)).toEqual(["Day", "Week"]);
+    expect(rangeButtons().map((b) => b.getAttribute("aria-pressed"))).toEqual(["false", "true"]);
   });
 
   it("shows the all-time total and switches range with a single selection", async () => {
     await render([session("read", "2025-10-05", 60), session("read", "2026-11-16", 60), session("walk", "2026-11-23", 30)]);
-    expect(rangeButtons().map((b) => b.textContent)).toEqual(["Week", "Month", "Year"]);
+    expect(rangeButtons().map((b) => b.textContent)).toEqual(["Day", "Week", "Month", "Year"]);
     expect(container.querySelector(".time-total")!.textContent).toContain("2h 30m");
-    act(() => rangeButtons()[2].click());
-    expect(rangeButtons().map((b) => b.getAttribute("aria-pressed"))).toEqual(["false", "false", "true"]);
+    act(() => rangeButtons()[3].click());
+    expect(rangeButtons().map((b) => b.getAttribute("aria-pressed"))).toEqual(["false", "false", "false", "true"]);
     expect(container.querySelectorAll(".bar")).toHaveLength(2);
   });
 
@@ -96,7 +96,9 @@ describe("Time screen", () => {
     act(() => (bar as unknown as HTMLElement).dispatchEvent(new MouseEvent("click", { bubbles: true })));
     expect(container.querySelector(".readout")!.textContent).toContain("Craft: 60 min");
     expect(container.querySelector(".readout")!.textContent).toContain("Body: 30 min");
-    expect(container.querySelector("table.sr-only")).not.toBeNull();
+    expect(container.querySelector(".sr-only table")).not.toBeNull();
+    // One thin bar per goal, side by side: Craft and Body in the first week.
+    expect(bar.querySelectorAll("rect[fill^='#']")).toHaveLength(2);
     expect(container.querySelector("svg")!.getAttribute("aria-label")).toContain("1h 30m");
   });
 });
