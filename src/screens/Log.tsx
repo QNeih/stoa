@@ -1,20 +1,19 @@
 import { useState } from "react";
 import { Header } from "../components/Header";
-import { counterName, habitName } from "../format";
+import { habitName } from "../format";
 import { useStoa } from "../state";
 import { formatDuration, formatTime, localDate } from "../time";
 import type { StoredEntry } from "../types";
 
 const DAYS_SHOWN = 14;
-const entryTime = (e: StoredEntry) => (e.type === "session" ? e.start : e.at);
 
-/** All entries by day, newest first; sessions open the edit form, counter taps can be deleted. */
+/** All sessions by day, newest first; a tap opens the edit form. */
 export function LogScreen() {
-  const { config, entries, deleteEntry } = useStoa();
+  const { config, entries } = useStoa();
   const [showAll, setShowAll] = useState(false);
 
   const byDay = new Map<string, StoredEntry[]>();
-  for (const e of [...entries].sort((a, b) => entryTime(b).localeCompare(entryTime(a)))) {
+  for (const e of [...entries].sort((a, b) => b.start.localeCompare(a.start))) {
     if (!byDay.has(e.day)) byDay.set(e.day, []);
     byDay.get(e.day)!.push(e);
   }
@@ -34,37 +33,20 @@ export function LogScreen() {
             {new Date(day + "T12:00").toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short", year: "numeric" })}
           </h2>
           <ul className="list">
-            {byDay.get(day)!.map((e) =>
-              e.type === "session" ? (
-                <li key={e.id} className="tap" onClick={() => (location.hash = `#/log/edit/${e.id}`)}>
-                  <div className="row">
-                    <strong>{habitName(config, e.habit)}</strong>
-                    <span>{formatDuration(new Date(e.end).getTime() - new Date(e.start).getTime())}</span>
-                  </div>
-                  {e.task && <div>{e.task}</div>}
-                  {e.note && <div className="note">{e.note}</div>}
-                  <div className="muted small">
-                    {formatTime(new Date(e.start))}–{formatTime(new Date(e.end))}
-                    {localDate(new Date(e.end)) !== e.day ? " (next day)" : ""}
-                  </div>
-                </li>
-              ) : (
-                <li key={e.id} className="row">
-                  <span>
-                    {formatTime(new Date(e.at))} · {counterName(config, e.counter)} {e.delta > 0 ? "+" : ""}
-                    {e.delta}
-                  </span>
-                  <button
-                    className="link"
-                    onClick={() => {
-                      if (confirm("Delete this counter tap?")) void deleteEntry(e.id!);
-                    }}
-                  >
-                    Delete
-                  </button>
-                </li>
-              ),
-            )}
+            {byDay.get(day)!.map((e) => (
+              <li key={e.id} className="tap" onClick={() => (location.hash = `#/log/edit/${e.id}`)}>
+                <div className="row">
+                  <strong>{habitName(config, e.habit)}</strong>
+                  <span>{formatDuration(new Date(e.end).getTime() - new Date(e.start).getTime())}</span>
+                </div>
+                {e.task && <div>{e.task}</div>}
+                {e.note && <div className="note">{e.note}</div>}
+                <div className="muted small">
+                  {formatTime(new Date(e.start))}–{formatTime(new Date(e.end))}
+                  {localDate(new Date(e.end)) !== e.day ? " (next day)" : ""}
+                </div>
+              </li>
+            ))}
           </ul>
         </section>
       ))}

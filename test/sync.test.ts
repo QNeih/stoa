@@ -124,7 +124,7 @@ function memStore(initial: Config, initialDirty = false) {
   return { store, add, entries, dirty, plan: () => plan, config: () => config };
 }
 
-const empty: Config = { goals: [], habits: [], counters: [] };
+const empty: Config = { goals: [], habits: [] };
 const session: LogEntry = {
   type: "session",
   habit: "gym",
@@ -177,7 +177,7 @@ describe("Stoa sheet", () => {
 });
 
 describe("roll-up", () => {
-  it("rewrites the rows of changed days, pulls config and reads today's plan", async () => {
+  it("rewrites the session rows of changed days, keeps old counter rows, pulls config and reads today's plan", async () => {
     const g = fakeGoogle({
       goals: [["g", "G", 1, false]],
       plans: [
@@ -188,6 +188,7 @@ describe("roll-up", () => {
       logs: [
         ["old", "2026-11-22", "session", "gym", "", "2026-11-22T08:00:00+01:00", "2026-11-22T08:30:00+01:00", ""],
         ["keep", "2026-11-21", "counter", "", "", "2026-11-21T12:00:00+01:00", "", "", "apps", 1],
+        ["tap", "2026-11-22", "counter", "", "", "2026-11-22T12:00:00+01:00", "", "", "apps", 1],
       ],
     });
     const m = memStore(empty);
@@ -200,8 +201,9 @@ describe("roll-up", () => {
     expect(g.rows("logs")).toEqual([
       ["keep", "2026-11-21", "counter", "", "", "2026-11-21T12:00:00+01:00", "", "", "apps", "1"],
       [...sessionRow, "", ""],
+      ["tap", "2026-11-22", "counter", "", "", "2026-11-22T12:00:00+01:00", "", "", "apps", "1"],
     ]);
-    expect(m.config()).toEqual({ goals: [{ id: "g", name: "G", rank: 1, archived: false }], habits: [], counters: [] });
+    expect(m.config()).toEqual({ goals: [{ id: "g", name: "G", rank: 1, archived: false }], habits: [] });
     expect(m.plan()).toEqual({ date: "2026-11-22", time_budget_min: 60, items: [{ habit: "gym", task: "Legs", minutes: 45 }], note: "Easy" });
     expect(await m.store.dirtyDays()).toEqual([]);
   });
@@ -216,7 +218,7 @@ describe("roll-up", () => {
   });
 
   it("pushes a config edited on the phone", async () => {
-    const local: Config = { goals: [], habits: [{ id: "h", goal: "g", name: "H", archived: false }], counters: [] };
+    const local: Config = { goals: [], habits: [{ id: "h", goal: "g", name: "H", archived: false }] };
     const g = fakeGoogle({ habits: [["old", "g", "Old", true]] });
     const m = memStore(local, true);
     const r = await rollUp(m.store, g.api, await g.api.open(), "2026-11-22");
@@ -226,14 +228,13 @@ describe("roll-up", () => {
   });
 
   it("gives an empty sheet the phone's config instead of emptying the phone", async () => {
-    const local: Config = { goals: [{ id: "g", name: "G", rank: 1, archived: false }], habits: [], counters: [{ id: "c", goal: "g", name: "C" }] };
+    const local: Config = { goals: [{ id: "g", name: "G", rank: 1, archived: false }], habits: [] };
     const g = fakeGoogle({});
     const m = memStore(local);
     const r = await rollUp(m.store, g.api, await g.api.open(), "2026-11-22");
     expect(r.configPushed).toBe(true);
     expect(m.config()).toEqual(local);
     expect(g.rows("goals")).toEqual([["g", "G", "1", "FALSE"]]);
-    expect(g.rows("counters")).toEqual([["c", "g", "C"]]);
     expect(m.plan()).toBeNull();
   });
 
@@ -246,13 +247,14 @@ describe("roll-up", () => {
     expect(await m.store.dirtyDays()).toEqual(["2026-11-22"]);
   });
 
-  it("restores an empty phone from the logs tab, keeping row ids", async () => {
-    const g = fakeGoogle({ logs: [sessionRow, ["", "2026-11-22", "counter", "", "", "2026-11-22T11:00:00+01:00", "", "", "apps", 2], ["x", "2026-11-22", "other"]] });
+  it("restores an empty phone from the sessions in the logs tab, keeping row ids and skipping counter rows", async () => {
+    const noId = ["", ...sessionRow.slice(1, 3), "read", ...sessionRow.slice(4)];
+    const g = fakeGoogle({ logs: [sessionRow, ["", "2026-11-22", "counter", "", "", "2026-11-22T11:00:00+01:00", "", "", "apps", 2], noId, ["x", "2026-11-22", "other"]] });
     const m = memStore(empty);
     const id = await g.api.open();
     expect(await restore(m.store, g.api, id)).toBe(2);
     expect(m.entries[0]).toMatchObject({ uid: "u1", habit: "gym", note: "ok", day: "2026-11-22" });
-    expect(m.entries[1]).toMatchObject({ type: "counter", counter: "apps", at: "2026-11-22T11:00:00+01:00", delta: 2 });
+    expect(m.entries[1]).toMatchObject({ habit: "read" });
     expect(m.entries[1].uid).toMatch(/\w{8}-/);
     expect(await restore(m.store, g.api, id)).toBe(0);
   });

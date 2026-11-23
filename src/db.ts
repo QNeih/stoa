@@ -21,7 +21,10 @@ export interface SyncStatus {
   message: string;
 }
 
-const EMPTY_CONFIG: Config = { goals: [], habits: [], counters: [] };
+/** A config as stored by any app version, with fields older versions lacked filled in. */
+function normalizeConfig(c: Partial<Config> | undefined): Config {
+  return { goals: c?.goals ?? [], habits: c?.habits ?? [] };
+}
 
 function req<T>(r: IDBRequest<T>): Promise<T> {
   return new Promise((resolve, reject) => {
@@ -42,7 +45,7 @@ export class Store implements SyncStore {
   private constructor(private db: IDBDatabase) {}
 
   static async open(): Promise<Store> {
-    const open = indexedDB.open(DB_NAME, 2);
+    const open = indexedDB.open(DB_NAME, 3);
     open.onupgradeneeded = (event) => {
       const db = open.result;
       const tx = open.transaction!;
@@ -50,16 +53,19 @@ export class Store implements SyncStore {
         db.createObjectStore(ENTRIES, { keyPath: "id", autoIncrement: true }).createIndex("day", "day");
         db.createObjectStore(KV);
       }
-      if (event.oldVersion < 2) {
-        // Version 2 syncs to a Google Sheet: every entry gets its row id, and the GitHub token goes.
+      // Version 2 syncs to a Google Sheet, so the GitHub token goes.
+      if (event.oldVersion < 2) tx.objectStore(KV).delete("settings");
+      if (event.oldVersion >= 1 && event.oldVersion < 3) {
+        // Every entry gets its row id (version 2); counter taps are retired and go (version 3).
+        // Taps already in the sheet stay there.
         const cursor = tx.objectStore(ENTRIES).openCursor();
         cursor.onsuccess = () => {
           const c = cursor.result;
           if (!c) return;
-          if (!c.value.uid) c.update({ ...c.value, uid: newUid() });
+          if (c.value.type !== "session") c.delete();
+          else if (!c.value.uid) c.update({ ...c.value, uid: newUid() });
           c.continue();
         };
-        tx.objectStore(KV).delete("settings");
       }
     };
     const store = new Store(await req(open));
@@ -90,7 +96,7 @@ export class Store implements SyncStore {
   setPlan = (p: Plan | null) => this.kvSet("plan", p);
   getSyncStatus = () => this.kvGet<SyncStatus | null>("syncStatus", null);
   setSyncStatus = (s: SyncStatus) => this.kvSet("syncStatus", s);
-  getConfig = () => this.kvGet<Config>("config", EMPTY_CONFIG);
+  getConfig = async () => normalizeConfig(await this.kvGet<Partial<Config> | undefined>("config", undefined));
   isConfigDirty = () => this.kvGet<boolean>("configDirty", false);
 
   async setConfig(config: Config, dirty: boolean): Promise<void> {

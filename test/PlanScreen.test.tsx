@@ -28,7 +28,6 @@ const data: StoaData = {
       { id: "write", goal: "craft", name: "Write", archived: false },
       { id: "walk", goal: "craft", name: "Walk", archived: false },
     ],
-    counters: [],
   },
   entries: [
     session("read", "Chapter 3", "09:00", "09:45"),

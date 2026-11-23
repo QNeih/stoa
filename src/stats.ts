@@ -1,4 +1,4 @@
-import type { Config, CounterEntry, LogEntry, Plan, PlanItem, SessionEntry } from "./types";
+import type { Config, LogEntry, Plan, PlanItem, SessionEntry } from "./types";
 import { daysBetween, localDate, splitByDay, startOfWeek } from "./time";
 
 export interface DoneItem {
@@ -14,26 +14,16 @@ export interface GoalWeek {
   lastSpentDaysAgo: number | null;
 }
 
-export interface CounterStats {
-  counter: string;
-  week: number;
-  total: number;
-}
-
 export interface Dashboard {
   todayMs: number;
   done: DoneItem[];
   weekByGoal: GoalWeek[];
-  counters: CounterStats[];
 }
-
-const isSession = (e: LogEntry): e is SessionEntry => e.type === "session";
-const isCounter = (e: LogEntry): e is CounterEntry => e.type === "counter";
 
 /** Sessions that have time on `day`, split at local midnight, oldest first. */
 export function doneOn(entries: LogEntry[], day: string): DoneItem[] {
   const out: DoneItem[] = [];
-  for (const s of entries.filter(isSession)) {
+  for (const s of entries) {
     const part = splitByDay(new Date(s.start), new Date(s.end)).find((p) => p.day === day);
     if (part && part.ms > 0) out.push({ session: s, ms: part.ms });
   }
@@ -80,7 +70,7 @@ export function dashboard(config: Config, entries: LogEntry[], now: Date): Dashb
 
   const weekMs = new Map<string, number>();
   const lastDay = new Map<string, string>();
-  for (const s of entries.filter(isSession)) {
+  for (const s of entries) {
     const goal = goalOfHabit.get(s.habit);
     if (!goal) continue;
     for (const p of splitByDay(new Date(s.start), new Date(s.end))) {
@@ -102,16 +92,5 @@ export function dashboard(config: Config, entries: LogEntry[], now: Date): Dashb
       };
     });
 
-  const counters = config.counters.map((c) => {
-    let week = 0;
-    let total = 0;
-    for (const e of entries.filter(isCounter)) {
-      if (e.counter !== c.id) continue;
-      total += e.delta;
-      if (localDate(new Date(e.at)) >= weekStart) week += e.delta;
-    }
-    return { counter: c.id, week, total };
-  });
-
-  return { todayMs, done, weekByGoal, counters };
+  return { todayMs, done, weekByGoal };
 }

@@ -4,7 +4,6 @@ import type { StoredEntry } from "../src/types";
 
 describe("logs", () => {
   const stored: StoredEntry[] = [
-    { id: 2, uid: "b", day: "2026-11-22", type: "counter", counter: "apps", at: "2026-11-22T11:00:00+01:00", delta: 1 },
     {
       id: 1,
       uid: "a",
@@ -20,7 +19,6 @@ describe("logs", () => {
 
   it("keeps the contract fields only", () => {
     expect(stored.map(toContract)).toEqual([
-      { type: "counter", counter: "apps", at: "2026-11-22T11:00:00+01:00", delta: 1 },
       { type: "session", habit: "gym", task: "Legs", start: "2026-11-22T09:00:00+01:00", end: "2026-11-22T10:00:00+01:00", note: "" },
     ]);
   });

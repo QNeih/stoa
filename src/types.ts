@@ -14,16 +14,9 @@ export interface Habit {
   archived: boolean;
 }
 
-export interface Counter {
-  id: string;
-  goal: string;
-  name: string;
-}
-
 export interface Config {
   goals: Goal[];
   habits: Habit[];
-  counters: Counter[];
 }
 
 export interface PlanItem {
@@ -49,14 +42,8 @@ export interface SessionEntry {
   note: string;
 }
 
-export interface CounterEntry {
-  type: "counter";
-  counter: string;
-  at: string;
-  delta: number;
-}
-
-export type LogEntry = SessionEntry | CounterEntry;
+/** The only kind of log entry; old counter rows in the sheet are left alone and not read. */
+export type LogEntry = SessionEntry;
 
 /**
  * A log entry as kept on the phone: `id` is the phone's storage key, `uid` the entry's row id

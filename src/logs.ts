@@ -3,17 +3,13 @@ import { localDate } from "./time";
 
 /** The day an entry is filed under: the local date it started. */
 export function dayOf(e: LogEntry): string {
-  return localDate(new Date(e.type === "session" ? e.start : e.at));
+  return localDate(new Date(e.start));
 }
 
 /** Strips phone-only fields (storage key, row id, day), as in the JSON export. */
 export function toContract(e: StoredEntry | LogEntry): LogEntry {
-  if (e.type === "session") {
-    const { type, habit, task, start, end, note } = e;
-    return { type, habit, task, start, end, note };
-  }
-  const { type, counter, at, delta } = e;
-  return { type, counter, at, delta };
+  const { type, habit, task, start, end, note } = e;
+  return { type, habit, task, start, end, note };
 }
 
 /** Lowercase slug for ids, unique against `taken` (adds -2, -3, ...). */

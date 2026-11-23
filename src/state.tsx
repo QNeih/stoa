@@ -1,7 +1,7 @@
 // App state and every action that changes it. Screens read and call these through useStoa().
 import { createContext, useContext, useEffect, useEffectEvent, useReducer, useRef, useState, type ReactNode } from "react";
 import type { Account, Store, SyncStatus } from "./db";
-import { activeGoals, counterName } from "./format";
+import { activeGoals } from "./format";
 import { AuthError, forgetToken, getAccessToken, loadGis, renewOnTap } from "./googleAuth";
 import { slugify, toContract } from "./logs";
 import { ApiError, SheetsApi } from "./sheets";
@@ -228,19 +228,6 @@ export function useStoaState(store: Store, initial: StoaData) {
 
   // --- log ---
 
-  async function tapCounter(id: string): Promise<void> {
-    renewForTap();
-    const entry = { type: "counter" as const, counter: id, at: isoLocal(new Date()), delta: 1 };
-    await store.addEntry(entry);
-    await reload();
-    void sync();
-    showToast(`${counterName(dataRef.current.config, id)} +1`, async () => {
-      const tap = (await store.allEntries()).filter((e) => e.type === "counter" && e.counter === id && e.at === entry.at).pop();
-      if (tap?.id !== undefined) await store.deleteEntry(tap.id);
-      await reload();
-    });
-  }
-
   async function saveSession(entry: SessionEntry, id?: number): Promise<void> {
     renewForTap();
     if (id !== undefined) await store.updateEntry(id, entry);
@@ -263,7 +250,7 @@ export function useStoaState(store: Store, initial: StoaData) {
     void sync();
   }
 
-  const newId = (c: Config, name: string) => slugify(name, [...c.goals, ...c.habits, ...c.counters].map((x) => x.id));
+  const newId = (c: Config, name: string) => slugify(name, [...c.goals, ...c.habits].map((x) => x.id));
 
   const addHabit = (name: string, goal: string) =>
     editConfig((c) => ({ ...c, habits: [...c.habits, { id: newId(c, name), goal, name, archived: false }] }));
@@ -271,9 +258,6 @@ export function useStoaState(store: Store, initial: StoaData) {
     editConfig((c) => ({ ...c, habits: c.habits.map((x) => (x.id === id ? { ...x, goal } : x)) }));
   const setHabitArchived = (id: string, archived: boolean) =>
     editConfig((c) => ({ ...c, habits: c.habits.map((x) => (x.id === id ? { ...x, archived } : x)) }));
-  const addCounter = (name: string, goal: string) =>
-    editConfig((c) => ({ ...c, counters: [...c.counters, { id: newId(c, name), goal, name }] }));
-  const removeCounter = (id: string) => editConfig((c) => ({ ...c, counters: c.counters.filter((x) => x.id !== id) }));
   const addGoal = (name: string) =>
     editConfig((c) => {
       const rank = Math.max(0, ...c.goals.map((g) => g.rank)) + 1;
@@ -397,14 +381,11 @@ export function useStoaState(store: Store, initial: StoaData) {
     discardTimer,
     confirmStillGoing,
     endStillGoing,
-    tapCounter,
     saveSession,
     deleteEntry,
     addHabit,
     setHabitGoal,
     setHabitArchived,
-    addCounter,
-    removeCounter,
     addGoal,
     setGoalArchived,
     moveGoal,

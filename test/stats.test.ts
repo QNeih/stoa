@@ -12,7 +12,6 @@ const config: Config = {
     { id: "job-search", goal: "career", name: "Job search", archived: false },
     { id: "partner", goal: "family", name: "Time together", archived: false },
   ],
-  counters: [{ id: "apps", goal: "career", name: "Applications" }],
 };
 
 const s = (habit: string, start: string, end: string): LogEntry => ({
@@ -30,8 +29,6 @@ describe("dashboard", () => {
     s("job-search", "2026-11-22T09:00:00+01:00", "2026-11-22T10:30:00+01:00"),
     s("partner", "2026-11-21T20:00:00+01:00", "2026-11-22T09:00:00+01:00"), // sleepover
     s("job-search", "2026-11-14T09:00:00+01:00", "2026-11-14T10:00:00+01:00"), // last week
-    { type: "counter", counter: "apps", at: "2026-11-20T10:00:00+01:00", delta: 1 },
-    { type: "counter", counter: "apps", at: "2026-11-10T10:00:00+01:00", delta: 1 },
   ];
   const d = dashboard(config, entries, now);
 
@@ -45,10 +42,6 @@ describe("dashboard", () => {
       { goal: "career", ms: 1.5 * 3600_000, lastSpentDaysAgo: 0 },
       { goal: "family", ms: 13 * 3600_000, lastSpentDaysAgo: 0 },
     ]);
-  });
-
-  it("counts counters for the week and in total", () => {
-    expect(d.counters).toEqual([{ counter: "apps", week: 1, total: 2 }]);
   });
 
   it("reports days since time was last spent, null when never", () => {

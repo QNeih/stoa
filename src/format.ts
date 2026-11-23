@@ -13,7 +13,6 @@ export const daysAgoText = (n: number | null) =>
 
 export const habitName = (c: Config, id: string) => c.habits.find((x) => x.id === id)?.name ?? id;
 export const goalName = (c: Config, id: string) => c.goals.find((g) => g.id === id)?.name ?? id;
-export const counterName = (c: Config, id: string) => c.counters.find((x) => x.id === id)?.name ?? id;
 
 /** Goals that are not archived, in rank order. */
 export const activeGoals = (c: Config): Goal[] => c.goals.filter((g) => !g.archived).sort((a, b) => a.rank - b.rank);

@@ -26,7 +26,7 @@ function GoalSelect({ goals, ...props }: { goals: Goal[] } & ComponentProps<"sel
   );
 }
 
-/** Goals (ranked, archived, never deleted), their habits and result counters. */
+/** Goals (ranked, archived, never deleted) and their habits. */
 export function HabitsScreen() {
   const stoa = useStoa();
   const { config: c } = stoa;
@@ -37,10 +37,6 @@ export function HabitsScreen() {
   const addHabit = (e: FormEvent<HTMLFormElement>) => {
     const input = takeName(e);
     if (input) void stoa.addHabit(input.name, String(input.form.get("goal")));
-  };
-  const addCounter = (e: FormEvent<HTMLFormElement>) => {
-    const input = takeName(e);
-    if (input) void stoa.addCounter(input.name, String(input.form.get("goal")));
   };
   const addGoal = (e: FormEvent<HTMLFormElement>) => {
     const input = takeName(e);
@@ -94,21 +90,6 @@ export function HabitsScreen() {
                   </span>
                 </li>
               ))}
-            {c.counters
-              .filter((x) => x.goal === g.id)
-              .map((x) => (
-                <li key={x.id} className="row">
-                  <span>{x.name} (counter)</span>
-                  <button
-                    className="link"
-                    onClick={() => {
-                      if (confirm(`Remove the counter "${x.name}"? Past taps stay in the logs.`)) void stoa.removeCounter(x.id);
-                    }}
-                  >
-                    Remove
-                  </button>
-                </li>
-              ))}
           </ul>
           <button
             className="link"
@@ -120,14 +101,6 @@ export function HabitsScreen() {
           </button>
         </section>
       ))}
-      {goals.length > 0 && (
-        <form className="card stack" onSubmit={addCounter}>
-          <h2>Add a result counter</h2>
-          <input name="name" type="text" placeholder="New result counter" required />
-          <GoalSelect name="goal" goals={goals} />
-          <button type="submit">Add counter</button>
-        </form>
-      )}
       <form className="card stack" onSubmit={addGoal}>
         <h2>Add a big goal</h2>
         <input name="name" type="text" placeholder="New big goal" required />

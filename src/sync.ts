@@ -6,6 +6,7 @@ import {
   configToRows,
   entryFromRow,
   entryToRow,
+  isSessionRow,
   logOrder,
   planFromRows,
   rowCells,
@@ -36,9 +37,12 @@ export interface RollUpResult {
 
 const message = (e: unknown) => String(e instanceof Error ? e.message : e);
 const same = (a: Cell[][], b: Cell[][]) => JSON.stringify(a.map(cellsText)) === JSON.stringify(b.map(cellsText));
-const isEmpty = (c: Config) => !c.goals.length && !c.habits.length && !c.counters.length;
+const isEmpty = (c: Config) => !c.goals.length && !c.habits.length;
 
-/** Replaces the rows of the dirty days with the phone's entries; returns the days whose rows changed. */
+/**
+ * Replaces the session rows of the dirty days with the phone's entries; returns the days whose rows changed.
+ * Rows of other types (old counter taps) stay.
+ */
 async function pushDays(store: SyncStore, api: SheetsApi, sheetId: string, remote: Tables["logs"]): Promise<string[]> {
   const days = await store.dirtyDays();
   if (!days.length) return [];
@@ -49,7 +53,7 @@ async function pushDays(store: SyncStore, api: SheetsApi, sheetId: string, remot
     const before = new Map<string, Cell[][]>();
     for (const row of remote) {
       const cells = rowCells("logs", row);
-      if (days.includes(row.day?.trim())) before.set(row.day.trim(), [...(before.get(row.day.trim()) ?? []), cells]);
+      if (days.includes(row.day?.trim()) && isSessionRow(row)) before.set(row.day.trim(), [...(before.get(row.day.trim()) ?? []), cells]);
       else kept.push(cells);
     }
     const changed: string[] = [];
@@ -68,7 +72,7 @@ async function pushDays(store: SyncStore, api: SheetsApi, sheetId: string, remot
 }
 
 /** Pushes a config edited on the phone, else takes the sheet's. An empty sheet never empties the phone. */
-async function syncConfig(store: SyncStore, api: SheetsApi, sheetId: string, remote: Tables): Promise<boolean> {
+async function syncConfig(store: SyncStore, api: SheetsApi, sheetId: string, remote: Pick<Tables, "goals" | "habits">): Promise<boolean> {
   const local = await store.getConfig();
   const remoteConfig = configFromRows(remote);
   if (!(await store.isConfigDirty()) && !(isEmpty(remoteConfig) && !isEmpty(local))) {
@@ -78,7 +82,7 @@ async function syncConfig(store: SyncStore, api: SheetsApi, sheetId: string, rem
   await store.setConfig(local, false);
   try {
     const rows = configToRows(local);
-    const changed = (["goals", "habits", "counters"] as const).filter(
+    const changed = (["goals", "habits"] as const).filter(
       (t) => !same(rows[t], remote[t].map((r) => rowCells(t, r))),
     );
     if (!changed.length) return false;
@@ -92,7 +96,7 @@ async function syncConfig(store: SyncStore, api: SheetsApi, sheetId: string, rem
 
 export async function rollUp(store: SyncStore, api: SheetsApi, sheetId: string, today: string): Promise<RollUpResult> {
   const result: RollUpResult = { pushedDays: [], configPushed: false, plan: null, errors: [] };
-  const remote = await api.read(sheetId, ["logs", "goals", "habits", "counters", "plans", "plan_days"]);
+  const remote = await api.read(sheetId, ["logs", "goals", "habits", "plans", "plan_days"]);
 
   try {
     result.pushedDays = await pushDays(store, api, sheetId, remote.logs);

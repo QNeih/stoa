@@ -3,7 +3,11 @@
 import { AuthError } from "./googleAuth";
 import type { Config, LogEntry, Plan, StoredEntry } from "./types";
 
-/** Tabs and their header rows. Rows are read by header name, written in this order. */
+/**
+ * Tabs and their header rows. Rows are read by header name, written in this order.
+ * Counters are retired: the `counters` tab and the `counter` and `delta` columns of `logs` stay for
+ * old rows, which the app neither reads nor removes.
+ */
 export const TABS = {
   goals: ["id", "name", "rank", "archived"],
   habits: ["id", "goal", "name", "archived"],
@@ -163,19 +167,17 @@ const num = (s: string | undefined, fallback = 0) => {
 /** A row id for a new log entry. */
 export const newUid = () => crypto.randomUUID();
 
-export function configFromRows(t: Pick<Tables, "goals" | "habits" | "counters">): Config {
+export function configFromRows(t: Pick<Tables, "goals" | "habits">): Config {
   return {
     goals: t.goals.filter((r) => r.id).map((r) => ({ id: r.id, name: r.name ?? "", rank: num(r.rank), archived: isTrue(r.archived) })),
     habits: t.habits.filter((r) => r.id).map((r) => ({ id: r.id, goal: r.goal ?? "", name: r.name ?? "", archived: isTrue(r.archived) })),
-    counters: t.counters.filter((r) => r.id).map((r) => ({ id: r.id, goal: r.goal ?? "", name: r.name ?? "" })),
   };
 }
 
-export function configToRows(c: Config): Record<"goals" | "habits" | "counters", Cell[][]> {
+export function configToRows(c: Config): Record<"goals" | "habits", Cell[][]> {
   return {
     goals: c.goals.map((g) => [g.id, g.name, g.rank, g.archived]),
     habits: c.habits.map((h) => [h.id, h.goal, h.name, h.archived]),
-    counters: c.counters.map((x) => [x.id, x.goal, x.name]),
   };
 }
 
@@ -190,19 +192,19 @@ export function planFromRows(t: Pick<Tables, "plans" | "plan_days">, date: strin
   return { date, time_budget_min: day ? num(day.time_budget_min, planned) : planned, items, note: day?.note ?? "" };
 }
 
-/** A log entry as a `logs` row. A counter tap keeps its time in `start`. */
+/** A session as a `logs` row. */
 export function entryToRow(e: StoredEntry): Cell[] {
-  return e.type === "session"
-    ? [e.uid, e.day, "session", e.habit, e.task, e.start, e.end, e.note, "", ""]
-    : [e.uid, e.day, "counter", "", "", e.at, "", "", e.counter, e.delta];
+  return [e.uid, e.day, "session", e.habit, e.task, e.start, e.end, e.note, "", ""];
 }
 
-/** A `logs` row as an entry with its row id (a new id when the row has none); null for an unknown type. */
+/** Whether the app owns a `logs` row: sessions. Other rows (old counter taps) are kept as they are. */
+export const isSessionRow = (r: Row) => r.type?.trim() === "session";
+
+/** A `logs` row as a session with its row id (a new id when the row has none); null for any other row. */
 export function entryFromRow(r: Row): (LogEntry & { uid: string }) | null {
+  if (!isSessionRow(r)) return null;
   const uid = r.id?.trim() || newUid();
-  if (r.type === "session") return { uid, type: "session", habit: r.habit ?? "", task: r.task ?? "", start: r.start ?? "", end: r.end ?? "", note: r.note ?? "" };
-  if (r.type === "counter") return { uid, type: "counter", counter: r.counter ?? "", at: r.start ?? "", delta: num(r.delta, 1) };
-  return null;
+  return { uid, type: "session", habit: r.habit ?? "", task: r.task ?? "", start: r.start ?? "", end: r.end ?? "", note: r.note ?? "" };
 }
 
 /** A row in header order as the text Sheets would show, without trailing blanks, for comparing. */
