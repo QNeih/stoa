@@ -4,7 +4,7 @@ import { activeGoals, goalName, habitName, toLocalInput } from "../format";
 import { PALETTE, goalColor } from "../palette";
 import { useStoa } from "../state";
 import { dropIndex, addableHabits, isRunning, msToday, todayItems } from "../today";
-import { formatClock, formatDuration, formatTime, localDate } from "../time";
+import { formatClock, formatDuration, formatTime, planDay } from "../time";
 import type { Config, PlanItem } from "../types";
 
 /** Re-renders every second while `active`, so running time counts up; returns the current time. */
@@ -134,7 +134,7 @@ function itemKeys(items: PlanItem[]): string[] {
 export function TodayScreen() {
   const { config, entries, plan, timer, account, startTimer, pauseTimer, moveTodayItem } = useStoa();
   const now = useNow(!!timer);
-  const today = localDate(now);
+  const today = planDay(now);
   const items = todayItems(plan, today);
   const keys = itemKeys(items);
   const { list, drag, handle, offset } = useCardDrag(items.length, (from, to) => void moveTodayItem(from, to));

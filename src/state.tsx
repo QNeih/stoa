@@ -8,7 +8,7 @@ import type { OverlapFix } from "./overlap";
 import { ApiError, SheetsApi } from "./sheets";
 import { minutesSinceLastCheck, standingCheckByUid } from "./results";
 import { restore, rollUp } from "./sync";
-import { isoLocal, localDate, validateStart } from "./time";
+import { isoLocal, localDate, planDay, validateStart } from "./time";
 import { addedItem, moveItem, switchTimer, timerSession, todayItems, withItems } from "./today";
 import type { Config, Plan, PlanItem, RunningTimer, SessionEntry, StoredCheck, StoredEntry } from "./types";
 
@@ -229,7 +229,7 @@ export function useStoaState(store: Store, initial: StoaData) {
    * The screen shows the new order at once, before the store has it, so a dropped card does not jump back.
    */
   async function writeTodayItems(items: PlanItem[]): Promise<void> {
-    const plan = withItems(dataRef.current.plan, localDate(new Date()), items);
+    const plan = withItems(dataRef.current.plan, planDay(new Date()), items);
     dataRef.current = { ...dataRef.current, plan };
     setData(dataRef.current);
     await store.setPlan(plan, true);
@@ -240,7 +240,7 @@ export function useStoaState(store: Store, initial: StoaData) {
   async function moveTodayItem(from: number, to: number): Promise<void> {
     if (from === to) return;
     renewForTap();
-    const items = todayItems(dataRef.current.plan, localDate(new Date()));
+    const items = todayItems(dataRef.current.plan, planDay(new Date()));
     await writeTodayItems(moveItem(items, from, to));
     void sync();
   }
@@ -248,7 +248,7 @@ export function useStoaState(store: Store, initial: StoaData) {
   /** Adds a sub-goal to today's list and starts its timer. */
   async function addAndStart(habit: string): Promise<void> {
     renewForTap();
-    const items = todayItems(dataRef.current.plan, localDate(new Date()));
+    const items = todayItems(dataRef.current.plan, planDay(new Date()));
     const item = addedItem(habit);
     await writeTodayItems([...items, item]);
     await startTimer(item.habit, item.task);
