@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { daysBetween, formatDuration, isoLocal, localDate, splitByDay, startOfWeek, validateStart } from "../src/time";
+import { daysBetween, formatDuration, isoLocal, localDate, planDay, splitByDay, startOfWeek, validateStart } from "../src/time";
 
 describe("validateStart", () => {
   const now = new Date("2026-11-22T20:00:00+01:00");
@@ -58,5 +58,14 @@ describe("time", () => {
   it("formats durations", () => {
     expect(formatDuration(65 * 60_000)).toBe("1h 05m");
     expect(formatDuration(59_999)).toBe("0m");
+  });
+});
+
+describe("planDay", () => {
+  it("keeps the day before until 4:00 local time", () => {
+    expect(planDay(new Date(2026, 10, 24, 0, 30))).toBe("2026-11-23");
+    expect(planDay(new Date(2026, 10, 24, 3, 59))).toBe("2026-11-23");
+    expect(planDay(new Date(2026, 10, 24, 4, 0))).toBe("2026-11-24");
+    expect(planDay(new Date(2026, 10, 23, 23, 0))).toBe("2026-11-23");
   });
 });

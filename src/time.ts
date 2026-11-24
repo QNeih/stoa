@@ -5,6 +5,14 @@ export function localDate(d: Date): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
+/** Hour of the night at which Today's list moves on to the new day. */
+export const DAY_STARTS_AT_HOUR = 4;
+
+/** The day Today's list belongs to: until 4:00 local time it is still the day before. */
+export function planDay(d: Date): string {
+  return localDate(new Date(d.getTime() - DAY_STARTS_AT_HOUR * 3600_000));
+}
+
 /** ISO 8601 with the local offset and no milliseconds, e.g. 2026-11-22T21:05:00+01:00. */
 export function isoLocal(d: Date): string {
   const off = -d.getTimezoneOffset();
