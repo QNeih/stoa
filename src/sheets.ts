@@ -10,15 +10,16 @@ import type { Config, LogEntry, Plan, Result, ResultCheck, StoredEntry } from ".
  * Counters are retired: the `counters` tab and the `counter` and `delta` columns of `logs` stay for
  * old rows, which the app neither reads nor removes. Time planning is retired too: older sheets keep a
  * `minutes` column on `plans` (see `RETIRED_COLUMNS`) and a `plan_days` tab, which the app ignores.
+ * Sub-goals were once habits: an older sheet's `habits` tab and `habit` columns are renamed on open.
  */
 export const TABS = {
   goals: ["id", "name", "rank", "archived", "color"],
-  habits: ["id", "goal", "name", "archived", "created"],
-  results: ["id", "habit", "name", "type", "min_minutes", "archived"],
+  sub_goals: ["id", "goal", "name", "archived", "created"],
+  results: ["id", "sub_goal", "name", "type", "min_minutes", "archived"],
   result_checks: ["id", "result", "day", "checked_at", "note", "minutes_since_last", "removed_at"],
   counters: ["id", "goal", "name"],
-  plans: ["date", "habit", "task"],
-  logs: ["id", "day", "type", "habit", "task", "start", "end", "note", "counter", "delta"],
+  plans: ["date", "sub_goal", "task"],
+  logs: ["id", "day", "type", "sub_goal", "task", "start", "end", "note", "counter", "delta"],
 } as const;
 
 /**
@@ -26,6 +27,12 @@ export const TABS = {
  * header. Rewriting the tab clears them, so a stale column never sits next to rewritten rows.
  */
 const RETIRED_COLUMNS: Partial<Record<Tab, number>> = { plans: 1 };
+
+/** Tabs renamed since older sheets: old title to new. Opening an older sheet renames the tab in place. */
+const RENAMED_TABS: Record<string, Tab> = { habits: "sub_goals" };
+
+/** Header cells renamed since older sheets: old name to new. Opening an older sheet renames the cell in place. */
+const RENAMED_COLUMNS: Record<string, string> = { habit: "sub_goal" };
 
 export type Tab = keyof typeof TABS;
 export type Cell = string | number | boolean;
@@ -122,6 +129,21 @@ export class SheetsApi {
       `${SHEETS}/${id}?fields=sheets.properties(sheetId,title)`,
     );
     const titles = new Set(info.sheets.map((s) => s.properties.title));
+    const renames = info.sheets.filter((s) => {
+      const to = RENAMED_TABS[s.properties.title];
+      return to && !titles.has(to);
+    });
+    if (renames.length) {
+      await this.call("POST", `${SHEETS}/${id}:batchUpdate`, {
+        requests: renames.map((s) => ({
+          updateSheetProperties: { properties: { sheetId: s.properties.sheetId, title: RENAMED_TABS[s.properties.title] }, fields: "title" },
+        })),
+      });
+      for (const s of renames) {
+        titles.delete(s.properties.title);
+        titles.add(RENAMED_TABS[s.properties.title]);
+      }
+    }
     const all = Object.keys(TABS) as Tab[];
     const present = all.filter((t) => titles.has(t));
     if (present.length) await this.extendHeaders(id, present);
@@ -141,14 +163,23 @@ export class SheetsApi {
     });
   }
 
-  /** Writes the columns a tab's header row lacks after its last header cell. */
+  /**
+   * Renames header cells renamed since (`RENAMED_COLUMNS`), then writes the columns a tab's header row
+   * lacks after its last header cell.
+   */
   private async extendHeaders(id: string, tabs: Tab[]): Promise<void> {
     const qs = tabs.map((t) => `ranges=${encodeURIComponent(range(t, "1:1"))}`).join("&");
     const r = await this.call<{ valueRanges: { values?: unknown[][] }[] }>("GET", `${SHEETS}/${id}/values:batchGet?${qs}`);
     const data = tabs.flatMap((t, i) => {
       const header = (r.valueRanges[i]?.values?.[0] ?? []).map((h) => String(h).trim());
+      const renamed = header.flatMap((h, j) => {
+        const to = RENAMED_COLUMNS[h];
+        if (!to || header.includes(to) || !(TABS[t] as readonly string[]).includes(to)) return [];
+        header[j] = to;
+        return [{ range: range(t, `${column(j)}1`), values: [[to]] }];
+      });
       const add = TABS[t].filter((k) => !header.includes(k));
-      return add.length ? [{ range: range(t, `${column(header.length)}1`), values: [add] }] : [];
+      return [...renamed, ...(add.length ? [{ range: range(t, `${column(header.length)}1`), values: [add] }] : [])];
     });
     if (data.length) await this.call("POST", `${SHEETS}/${id}/values:batchUpdate`, { valueInputOption: "RAW", data });
   }
@@ -210,7 +241,7 @@ export function resultsFromRows(rows: Row[]): Result[] {
     .filter((r) => r.id?.trim())
     .map((r) => ({
       id: r.id.trim(),
-      habit: r.habit ?? "",
+      subGoal: r.sub_goal ?? "",
       name: r.name ?? "",
       type: (r.type ?? "").trim().toLowerCase() === "auto" ? "auto" : "manual",
       min_minutes: num(r.min_minutes, DEFAULT_MIN_MINUTES),
@@ -239,7 +270,7 @@ export function mergeResults(remote: Row[], local: Result[]): { rows: Cell[][]; 
   return { rows, results };
 }
 
-export function configFromRows(t: Pick<Tables, "goals" | "habits" | "results">): Config {
+export function configFromRows(t: Pick<Tables, "goals" | "sub_goals" | "results">): Config {
   return {
     goals: t.goals
       .filter((r) => r.id)
@@ -247,23 +278,32 @@ export function configFromRows(t: Pick<Tables, "goals" | "habits" | "results">):
         const color = (r.color ?? "").trim();
         return { id: r.id, name: r.name ?? "", rank: num(r.rank), archived: isTrue(r.archived), color: isPaletteKey(color) ? color : "" };
       }),
-    habits: t.habits
+    subGoals: t.sub_goals
       .filter((r) => r.id)
       .map((r) => ({ id: r.id, goal: r.goal ?? "", name: r.name ?? "", archived: isTrue(r.archived), created: isoDay(r.created) })),
     results: resultsFromRows(t.results),
   };
 }
 
-export function configToRows(c: Config): Record<"goals" | "habits", Cell[][]> {
+export function configToRows(c: Config): Record<"goals" | "sub_goals", Cell[][]> {
   return {
     goals: c.goals.map((g) => [g.id, g.name, g.rank, g.archived, g.color]),
-    habits: c.habits.map((h) => [h.id, h.goal, h.name, h.archived, h.created]),
+    sub_goals: c.subGoals.map((h) => [h.id, h.goal, h.name, h.archived, h.created]),
   };
+}
+
+/**
+ * The latest plan on or before `today`: the `plans` rows of the latest such date, in order, or null
+ * when there is none. Today then carries that list over until a list for today arrives.
+ */
+export function latestPlanFromRows(plans: Tables["plans"], today: string): Plan | null {
+  const date = plans.map((r) => isoDay(r.date)).reduce((a, d) => (d && d <= today && d > a ? d : a), "");
+  return date ? planFromRows(plans, date) : null;
 }
 
 /** The plan for `date`: its `plans` rows in order, or null when it has none. */
 export function planFromRows(plans: Tables["plans"], date: string): Plan | null {
-  const items = plans.filter((r) => r.date?.trim() === date).map((r) => ({ habit: r.habit ?? "", task: r.task ?? "" }));
+  const items = plans.filter((r) => r.date?.trim() === date).map((r) => ({ subGoal: r.sub_goal ?? "", task: r.task ?? "" }));
   return items.length ? { date, items } : null;
 }
 
@@ -272,7 +312,7 @@ export function planFromRows(plans: Tables["plans"], date: string): Plan | null 
  * that date's first row was (at the end when it had none). Rows of other dates stay as they are.
  */
 export function mergePlan(remote: Row[], plan: Plan): Row[] {
-  const mine: Row[] = plan.items.map((i) => ({ date: plan.date, habit: i.habit, task: i.task }));
+  const mine: Row[] = plan.items.map((i) => ({ date: plan.date, sub_goal: i.subGoal, task: i.task }));
   const out: Row[] = [];
   let placed = false;
   for (const r of remote) {
@@ -288,7 +328,7 @@ export function mergePlan(remote: Row[], plan: Plan): Row[] {
 
 /** A session as a `logs` row. */
 export function entryToRow(e: StoredEntry): Cell[] {
-  return [e.uid, e.day, "session", e.habit, e.task, e.start, e.end, e.note, "", ""];
+  return [e.uid, e.day, "session", e.subGoal, e.task, e.start, e.end, e.note, "", ""];
 }
 
 /** Whether the app owns a `logs` row: sessions. Other rows (old counter taps) are kept as they are. */
@@ -298,7 +338,7 @@ export const isSessionRow = (r: Row) => r.type?.trim() === "session";
 export function entryFromRow(r: Row): (LogEntry & { uid: string }) | null {
   if (!isSessionRow(r)) return null;
   const uid = r.id?.trim() || newUid();
-  return { uid, type: "session", habit: r.habit ?? "", task: r.task ?? "", start: r.start ?? "", end: r.end ?? "", note: r.note ?? "" };
+  return { uid, type: "session", subGoal: r.sub_goal ?? "", task: r.task ?? "", start: r.start ?? "", end: r.end ?? "", note: r.note ?? "" };
 }
 
 /** A result check as a `result_checks` row. */

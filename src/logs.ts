@@ -24,8 +24,8 @@ export function olderPageStart(from: string, olderDay: string): string {
 
 /** Strips phone-only fields (storage key, row id, day), as in the JSON export. */
 export function toContract(e: StoredEntry | LogEntry): LogEntry {
-  const { type, habit, task, start, end, note } = e;
-  return { type, habit, task, start, end, note };
+  const { type, subGoal, task, start, end, note } = e;
+  return { type, subGoal, task, start, end, note };
 }
 
 /** Lowercase slug for ids, unique against `taken` (adds -2, -3, ...). */

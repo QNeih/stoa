@@ -9,7 +9,7 @@ describe("logs", () => {
       uid: "a",
       day: "2026-11-22",
       type: "session",
-      habit: "gym",
+      subGoal: "gym",
       task: "Legs",
       start: "2026-11-22T09:00:00+01:00",
       end: "2026-11-22T10:00:00+01:00",
@@ -19,14 +19,14 @@ describe("logs", () => {
 
   it("keeps the contract fields only", () => {
     expect(stored.map(toContract)).toEqual([
-      { type: "session", habit: "gym", task: "Legs", start: "2026-11-22T09:00:00+01:00", end: "2026-11-22T10:00:00+01:00", note: "" },
+      { type: "session", subGoal: "gym", task: "Legs", start: "2026-11-22T09:00:00+01:00", end: "2026-11-22T10:00:00+01:00", note: "" },
     ]);
   });
 
   it("files a session under its local start date", () => {
     const e = {
       type: "session" as const,
-      habit: "x",
+      subGoal: "x",
       task: "",
       start: "2026-11-22T23:30:00+01:00",
       end: "2026-11-23T01:00:00+01:00",

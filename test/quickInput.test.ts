@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { matchHabit, parseQuickInput, quickSession } from "../src/quickInput";
-import type { Habit } from "../src/types";
+import { matchSubGoal, parseQuickInput, quickSession } from "../src/quickInput";
+import type { SubGoal } from "../src/types";
 
-const habit = (id: string, name: string): Habit => ({ id, goal: "g", name, archived: false, created: "" });
-const habits = [habit("gym", "Gym"), habit("job", "Job search"), habit("cv", "CV"), habit("read", "Reading"), habit("write", "Writing")];
+const subGoal = (id: string, name: string): SubGoal => ({ id, goal: "g", name, archived: false, created: "" });
+const subGoals = [subGoal("gym", "Gym"), subGoal("job", "Job search"), subGoal("cv", "CV"), subGoal("read", "Reading"), subGoal("write", "Writing")];
 
 // Monday 23 November 2026, 18:20:30 in Berlin (the tests run in Europe/Berlin).
 const now = new Date("2026-11-23T18:20:30+01:00");
-const parse = (text: string) => parseQuickInput(text, habits, now);
+const parse = (text: string) => parseQuickInput(text, subGoals, now);
 /** Start and end as local "YYYY-MM-DD HH:MM". */
 const span = (text: string) => {
   const r = parse(text);
@@ -15,33 +15,33 @@ const span = (text: string) => {
   return [f(r.start), f(r.end)];
 };
 
-describe("matchHabit", () => {
+describe("matchSubGoal", () => {
   it("matches case-insensitively by exact name, then prefix, then contains", () => {
-    expect(matchHabit("GYM", habits).habit?.id).toBe("gym");
-    expect(matchHabit("job", habits).habit?.id).toBe("job");
-    expect(matchHabit("search", habits).habit?.id).toBe("job");
+    expect(matchSubGoal("GYM", subGoals).subGoal?.id).toBe("gym");
+    expect(matchSubGoal("job", subGoals).subGoal?.id).toBe("job");
+    expect(matchSubGoal("search", subGoals).subGoal?.id).toBe("job");
   });
 
   it("finds a sub-goal named inside longer text", () => {
-    expect(matchHabit("gym workout", habits).habit?.id).toBe("gym");
+    expect(matchSubGoal("gym workout", subGoals).subGoal?.id).toBe("gym");
   });
 
   it("reports every candidate when the text fits several", () => {
-    const r = matchHabit("ing", habits);
-    expect(r.habit).toBeNull();
+    const r = matchSubGoal("ing", subGoals);
+    expect(r.subGoal).toBeNull();
     expect(r.candidates.map((h) => h.id)).toEqual(["read", "write"]);
   });
 
   it("prefers an exact name over a longer one it starts", () => {
-    const r = matchHabit("cv", [habit("cv", "CV"), habit("cvx", "CV review")]);
-    expect(r.habit?.id).toBe("cv");
+    const r = matchSubGoal("cv", [subGoal("cv", "CV"), subGoal("cvx", "CV review")]);
+    expect(r.subGoal?.id).toBe("cv");
   });
 });
 
 describe("parseQuickInput", () => {
   it("places a duration for today so it ends now, to the minute", () => {
     const r = parse("45m gym");
-    expect(r.habit?.id).toBe("gym");
+    expect(r.subGoal?.id).toBe("gym");
     expect(r.minutes).toBe(45);
     expect(r.placed).toBe(true);
     expect(span("45m gym")).toEqual(["2026-11-23 17:35", "2026-11-23 18:20"]);
@@ -56,7 +56,7 @@ describe("parseQuickInput", () => {
 
   it("reads hours with minutes and a start time", () => {
     const r = parse("1h30 job search 14:00");
-    expect(r.habit?.id).toBe("job");
+    expect(r.subGoal?.id).toBe("job");
     expect(r.minutes).toBe(90);
     expect(r.placed).toBe(false);
     expect(span("1h30 job search 14:00")).toEqual(["2026-11-23 14:00", "2026-11-23 15:30"]);
@@ -64,7 +64,7 @@ describe("parseQuickInput", () => {
 
   it("reads a spelled-out duration and an ISO date after 'on'", () => {
     const r = parse("gym 45 min on 2026-11-20");
-    expect(r.habit?.id).toBe("gym");
+    expect(r.subGoal?.id).toBe("gym");
     expect(r.day).toBe("2026-11-20");
     expect(span("gym 45 min on 2026-11-20")).toEqual(["2026-11-20 11:15", "2026-11-20 12:00"]);
   });
@@ -77,7 +77,7 @@ describe("parseQuickInput", () => {
     ["cv 20 minutes", 20],
   ])("reads the duration in %s", (text, minutes) => {
     expect(parse(text).minutes).toBe(minutes);
-    expect(parse(text).habit?.id).toBe("cv");
+    expect(parse(text).subGoal?.id).toBe("cv");
   });
 
   it("reads a start-end range, and a range past midnight ends the next day", () => {
@@ -130,7 +130,7 @@ describe("quickSession", () => {
   it("builds the session to save once the text has no problems", () => {
     expect(quickSession(parse("1h30 job search 14:00"))).toEqual({
       type: "session",
-      habit: "job",
+      subGoal: "job",
       task: "",
       start: "2026-11-23T14:00:00+01:00",
       end: "2026-11-23T15:30:00+01:00",

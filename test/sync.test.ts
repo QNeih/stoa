@@ -56,6 +56,13 @@ function fakeGoogle(data?: Partial<Record<Tab, Cell[][]>>, failWrites = false, f
       for (const r of body.requests) {
         if (r.addSheet) tabs.set(r.addSheet.properties.title, []);
         if (r.deleteSheet) tabs.delete(names[r.deleteSheet.sheetId]);
+        if (r.updateSheetProperties) {
+          expect(r.updateSheetProperties.fields).toBe("title");
+          const { sheetId, title } = r.updateSheetProperties.properties;
+          const entries = [...tabs.entries()].map(([t, rows], i) => [i === sheetId ? title : t, rows] as const);
+          tabs.clear();
+          for (const [t, rows] of entries) tabs.set(t, rows);
+        }
       }
       return json(200, {});
     }
@@ -161,10 +168,10 @@ function memStore(initial: Config, initialDirty = false) {
   return { store, add, addCheck, uncheck, editPlan, entries, checks, dirty, plan: () => plan, config: () => config };
 }
 
-const empty: Config = { goals: [], habits: [], results: [] };
+const empty: Config = { goals: [], subGoals: [], results: [] };
 const session: LogEntry = {
   type: "session",
-  habit: "gym",
+  subGoal: "gym",
   task: "",
   start: "2026-11-22T09:00:00+01:00",
   end: "2026-11-22T10:00:00+01:00",
@@ -220,16 +227,36 @@ describe("Stoa sheet", () => {
   it("appends columns added since to the header rows of an older sheet, keeping its rows", async () => {
     const g = fakeGoogle({});
     g.tabs.set("goals", [["id", "name", "rank", "archived"], ["g", "G", 1, false]]);
-    g.tabs.set("habits", [["id", "goal", "name", "archived", "mine"], ["h", "g", "H", false, "x"]]);
+    g.tabs.set("sub_goals", [["id", "goal", "name", "archived", "mine"], ["h", "g", "H", false, "x"]]);
     await g.api.open();
     expect(g.tabs.get("goals")).toEqual([[...TABS.goals], ["g", "G", 1, false]]);
-    expect(g.tabs.get("habits")).toEqual([["id", "goal", "name", "archived", "mine", "created"], ["h", "g", "H", false, "x"]]);
-    const { goals, habits } = await g.api.read("sheet-1", ["goals", "habits"]);
-    expect(configFromRows({ goals, habits, results: [] })).toEqual({
+    expect(g.tabs.get("sub_goals")).toEqual([["id", "goal", "name", "archived", "mine", "created"], ["h", "g", "H", false, "x"]]);
+    const { goals, sub_goals } = await g.api.read("sheet-1", ["goals", "sub_goals"]);
+    expect(configFromRows({ goals, sub_goals, results: [] })).toEqual({
       goals: [{ id: "g", name: "G", rank: 1, archived: false, color: "" }],
-      habits: [{ id: "h", goal: "g", name: "H", archived: false, created: "" }],
+      subGoals: [{ id: "h", goal: "g", name: "H", archived: false, created: "" }],
       results: [],
     });
+  });
+
+  it("renames an older sheet's habits tab and habit columns, keeping their rows", async () => {
+    const g = fakeGoogle({});
+    g.tabs.delete("sub_goals");
+    g.tabs.set("habits", [["id", "goal", "name", "archived", "created"], ["gym", "g", "Gym", false, "2026-11-01"]]);
+    g.tabs.set("results", [["id", "habit", "name", "type", "min_minutes", "archived"], ["r1", "gym", "Trained", "auto", "", false]]);
+    g.tabs.set("plans", [["date", "habit", "task"], ["2026-11-22", "gym", "Legs"]]);
+    g.tabs.set("logs", [["id", "day", "type", "habit", "task", "start", "end", "note", "counter", "delta"]]);
+    await g.api.open();
+    expect(g.tabs.has("habits")).toBe(false);
+    expect(g.tabs.get("sub_goals")).toEqual([[...TABS.sub_goals], ["gym", "g", "Gym", false, "2026-11-01"]]);
+    expect(g.tabs.get("results")![0]).toEqual([...TABS.results]);
+    expect(g.tabs.get("plans")).toEqual([[...TABS.plans], ["2026-11-22", "gym", "Legs"]]);
+    expect(g.tabs.get("logs")![0]).toEqual([...TABS.logs]);
+    const m = memStore(empty);
+    const r = await rollUp(m.store, g.api, "sheet-1", "2026-11-22");
+    expect(r.plan).toEqual({ date: "2026-11-22", items: [{ subGoal: "gym", task: "Legs" }] });
+    expect(m.config().subGoals.map((h) => h.id)).toEqual(["gym"]);
+    expect(m.config().results[0]).toMatchObject({ id: "r1", subGoal: "gym" });
   });
 
   it("writes no header cells when every tab is up to date", async () => {
@@ -248,7 +275,7 @@ describe("roll-up", () => {
   it("rewrites the session rows of changed days, keeps old counter rows, pulls config and reads today's plan", async () => {
     const g = fakeGoogle({
       goals: [["g", "G", 1, false, "sky"]],
-      habits: [["gym", "g", "Gym", false, "2026-11-01"], ["old", "g", "Old", true, ""], ["bad", "g", "Bad", false, "soon"]],
+      sub_goals: [["gym", "g", "Gym", false, "2026-11-01"], ["old", "g", "Old", true, ""], ["bad", "g", "Bad", false, "soon"]],
       plans: [
         ["2026-11-22", "gym", "Legs"],
         ["2026-11-23", "gym", "Arms"],
@@ -273,15 +300,30 @@ describe("roll-up", () => {
     ]);
     expect(m.config()).toEqual({
       goals: [{ id: "g", name: "G", rank: 1, archived: false, color: "sky" }],
-      habits: [
+      subGoals: [
         { id: "gym", goal: "g", name: "Gym", archived: false, created: "2026-11-01" },
         { id: "old", goal: "g", name: "Old", archived: true, created: "" },
         { id: "bad", goal: "g", name: "Bad", archived: false, created: "" },
       ],
       results: [],
     });
-    expect(m.plan()).toEqual({ date: "2026-11-22", items: [{ habit: "gym", task: "Legs" }] });
+    expect(m.plan()).toEqual({ date: "2026-11-22", items: [{ subGoal: "gym", task: "Legs" }] });
     expect(await m.store.dirtyDays()).toEqual([]);
+  });
+
+  it("reads the latest list up to today when the sheet has none for today", async () => {
+    const g = fakeGoogle({
+      plans: [
+        ["2026-11-20", "gym", "Legs"],
+        ["2026-11-21", "read", ""],
+        ["2026-11-21", "gym", "Arms"],
+        ["2026-11-25", "gym", "Later"],
+      ],
+    });
+    const m = memStore(empty);
+    const r = await rollUp(m.store, g.api, await g.api.open(), "2026-11-23");
+    expect(r.plan).toEqual({ date: "2026-11-21", items: [{ subGoal: "read", task: "" }, { subGoal: "gym", task: "Arms" }] });
+    expect(m.plan()).toEqual(r.plan);
   });
 
   it("writes nothing when the sheet already holds the day", async () => {
@@ -294,17 +336,17 @@ describe("roll-up", () => {
   });
 
   it("pushes a config edited on the phone", async () => {
-    const local: Config = { goals: [], habits: [{ id: "h", goal: "g", name: "H", archived: false, created: "2026-11-20" }], results: [] };
-    const g = fakeGoogle({ habits: [["old", "g", "Old", true, ""]] });
+    const local: Config = { goals: [], subGoals: [{ id: "h", goal: "g", name: "H", archived: false, created: "2026-11-20" }], results: [] };
+    const g = fakeGoogle({ sub_goals: [["old", "g", "Old", true, ""]] });
     const m = memStore(local, true);
     const r = await rollUp(m.store, g.api, await g.api.open(), "2026-11-22");
     expect(r.configPushed).toBe(true);
-    expect(g.rows("habits")).toEqual([["h", "g", "H", "FALSE", "2026-11-20"]]);
+    expect(g.rows("sub_goals")).toEqual([["h", "g", "H", "FALSE", "2026-11-20"]]);
     expect(await m.store.isConfigDirty()).toBe(false);
   });
 
   it("gives an empty sheet the phone's config instead of emptying the phone", async () => {
-    const local: Config = { goals: [{ id: "g", name: "G", rank: 1, archived: false, color: "mint" }], habits: [], results: [] };
+    const local: Config = { goals: [{ id: "g", name: "G", rank: 1, archived: false, color: "mint" }], subGoals: [], results: [] };
     const g = fakeGoogle({});
     const m = memStore(local);
     const r = await rollUp(m.store, g.api, await g.api.open(), "2026-11-22");
@@ -329,8 +371,8 @@ describe("roll-up", () => {
     const m = memStore(empty);
     const id = await g.api.open();
     expect(await restore(m.store, g.api, id)).toEqual({ entries: 2, checks: 0 });
-    expect(m.entries[0]).toMatchObject({ uid: "u1", habit: "gym", note: "ok", day: "2026-11-22" });
-    expect(m.entries[1]).toMatchObject({ habit: "read" });
+    expect(m.entries[0]).toMatchObject({ uid: "u1", subGoal: "gym", note: "ok", day: "2026-11-22" });
+    expect(m.entries[1]).toMatchObject({ subGoal: "read" });
     expect(m.entries[1].uid).toMatch(/\w{8}-/);
     expect(await restore(m.store, g.api, id)).toEqual({ entries: 0, checks: 0 });
   });
@@ -391,9 +433,9 @@ describe("plan edits", () => {
   const edited: Plan = {
     date: "2026-11-22",
     items: [
-      { habit: "read", task: "" },
-      { habit: "gym", task: "Legs" },
-      { habit: "walk", task: "" },
+      { subGoal: "read", task: "" },
+      { subGoal: "gym", task: "Legs" },
+      { subGoal: "walk", task: "" },
     ],
   };
 
@@ -418,7 +460,7 @@ describe("plan edits", () => {
   it("are appended for a day the check-in did not plan", async () => {
     const g = fakeGoogle({ plans: plans.slice(0, 1) });
     const m = memStore(empty);
-    const walk: Plan = { date: "2026-11-22", items: [{ habit: "walk", task: "" }] };
+    const walk: Plan = { date: "2026-11-22", items: [{ subGoal: "walk", task: "" }] };
     m.editPlan(walk);
     const r = await rollUp(m.store, g.api, await g.api.open(), "2026-11-22");
     expect(g.rows("plans")).toEqual([
@@ -431,7 +473,7 @@ describe("plan edits", () => {
   it("rewrite an older sheet's plans without its retired minutes column and read its plan_days tab and minutes as before", async () => {
     const g = fakeGoogle({ plans: [], plan_days: [] });
     g.tabs.set("plans", [
-      ["date", "habit", "task", "minutes"],
+      ["date", "sub_goal", "task", "minutes"],
       ["2026-11-21", "gym", "Arms", 30],
       ["2026-11-22", "gym", "Legs", 45],
       ["2026-11-22", "read", "", 30],
@@ -440,12 +482,12 @@ describe("plan edits", () => {
     const m = memStore(empty);
     const first = await rollUp(m.store, g.api, await g.api.open(), "2026-11-22");
     expect(first.errors).toEqual([]);
-    expect(first.plan).toEqual({ date: "2026-11-22", items: [{ habit: "gym", task: "Legs" }, { habit: "read", task: "" }] });
+    expect(first.plan).toEqual({ date: "2026-11-22", items: [{ subGoal: "gym", task: "Legs" }, { subGoal: "read", task: "" }] });
 
     m.editPlan(edited);
     const r = await rollUp(m.store, g.api, "sheet-1", "2026-11-22");
     expect(r.errors).toEqual([]);
-    expect(g.tabs.get("plans")![0]).toEqual(["date", "habit", "task", ""]);
+    expect(g.tabs.get("plans")![0]).toEqual(["date", "sub_goal", "task", ""]);
     expect(g.rows("plans").map((row) => [...row, ""].slice(0, 4))).toEqual([
       ["2026-11-21", "gym", "Arms", ""],
       ["2026-11-22", "read", "", ""],
@@ -479,9 +521,9 @@ describe("results", () => {
     const m = memStore(empty);
     await rollUp(m.store, g.api, await g.api.open(), "2026-11-22");
     expect(m.config().results).toEqual([
-      { id: "r1", habit: "gym", name: "Ran 5k", type: "manual", min_minutes: 30, archived: false },
-      { id: "r2", habit: "gym", name: "Trained", type: "auto", min_minutes: 30, archived: false },
-      { id: "r3", habit: "read", name: "Read a book", type: "auto", min_minutes: 45, archived: true },
+      { id: "r1", subGoal: "gym", name: "Ran 5k", type: "manual", min_minutes: 30, archived: false },
+      { id: "r2", subGoal: "gym", name: "Trained", type: "auto", min_minutes: 30, archived: false },
+      { id: "r3", subGoal: "read", name: "Read a book", type: "auto", min_minutes: 45, archived: true },
     ]);
   });
 
@@ -491,8 +533,8 @@ describe("results", () => {
       ...empty,
       goals: [{ id: "g", name: "G", rank: 1, archived: false, color: "" }],
       results: [
-        { id: "r1", habit: "gym", name: "Ran 10k", type: "manual", min_minutes: 30, archived: true },
-        { id: "gone", habit: "gym", name: "Removed in the sheet", type: "manual", min_minutes: 30, archived: false },
+        { id: "r1", subGoal: "gym", name: "Ran 10k", type: "manual", min_minutes: 30, archived: true },
+        { id: "gone", subGoal: "gym", name: "Removed in the sheet", type: "manual", min_minutes: 30, archived: false },
       ],
     };
     const m = memStore(local, true);

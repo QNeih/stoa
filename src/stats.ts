@@ -4,7 +4,7 @@ import { daysBetween, localDate, parseLocalDate, splitByDay, startOfWeek } from 
 // --- goal stats ---
 
 export interface SubGoalStats {
-  habit: string;
+  subGoal: string;
   weekMs: number;
   lastWeekMs: number;
   allTimeMs: number;
@@ -46,30 +46,30 @@ export function goalStats(config: Config, entries: LogEntry[], now: Date): GoalS
   const weekStart = startOfWeek(now).getTime();
   const lastWeekStart = addDays(startOfWeek(now), -7).getTime();
   const sevenDaysStart = localDate(addDays(now, -6));
-  const habitStats = new Map(config.habits.map((h) => [h.id, { habit: h.id, weekMs: 0, lastWeekMs: 0, allTimeMs: 0 }]));
+  const subGoalStats = new Map(config.subGoals.map((h) => [h.id, { subGoal: h.id, weekMs: 0, lastWeekMs: 0, allTimeMs: 0 }]));
   const lastDay = new Map<string, string>();
 
   for (const s of entries) {
-    const st = habitStats.get(s.habit);
+    const st = subGoalStats.get(s.subGoal);
     if (!st) continue;
     st.weekMs += overlapMs(s, weekStart, now.getTime());
     st.lastWeekMs += overlapMs(s, lastWeekStart, weekStart);
     st.allTimeMs += overlapMs(s, -Infinity, now.getTime());
     for (const p of splitByDay(new Date(s.start), new Date(s.end))) {
-      if (p.ms > 0 && p.day <= today && (lastDay.get(s.habit) ?? "") < p.day) lastDay.set(s.habit, p.day);
+      if (p.ms > 0 && p.day <= today && (lastDay.get(s.subGoal) ?? "") < p.day) lastDay.set(s.subGoal, p.day);
     }
   }
 
   return config.goals
     .filter((g) => !g.archived)
     .map((g) => {
-      const habits = config.habits.filter((h) => h.goal === g.id);
-      const subGoals = habits
-        .filter((h) => !h.archived || habitStats.get(h.id)!.allTimeMs > 0)
-        .map((h) => habitStats.get(h.id)!)
+      const own = config.subGoals.filter((h) => h.goal === g.id);
+      const subGoals = own
+        .filter((h) => !h.archived || subGoalStats.get(h.id)!.allTimeMs > 0)
+        .map((h) => subGoalStats.get(h.id)!)
         .sort((a, b) => b.weekMs - a.weekMs || b.allTimeMs - a.allTimeMs);
-      const sum = (k: "weekMs" | "lastWeekMs" | "allTimeMs") => habits.reduce((n, h) => n + habitStats.get(h.id)![k], 0);
-      const last = habits.map((h) => lastDay.get(h.id) ?? "").reduce((a, b) => (a > b ? a : b), "");
+      const sum = (k: "weekMs" | "lastWeekMs" | "allTimeMs") => own.reduce((n, h) => n + subGoalStats.get(h.id)![k], 0);
+      const last = own.map((h) => lastDay.get(h.id) ?? "").reduce((a, b) => (a > b ? a : b), "");
       return {
         goal: g.id,
         rank: g.rank,
@@ -138,11 +138,11 @@ export function timeBuckets(config: Config, entries: LogEntry[], range: Range, n
   const first = firstDay(entries);
   if (!first) return [];
   const today = localDate(now);
-  const goalOf = new Map(config.habits.map((h) => [h.id, h.goal]));
+  const goalOf = new Map(config.subGoals.map((h) => [h.id, h.goal]));
   const buckets = new Map<string, Bucket>();
   for (let b = bucketStart(first, range); b <= today; b = nextBucket(b, range)) buckets.set(b, { start: b, byGoal: {}, totalMs: 0 });
   for (const s of entries) {
-    const goal = goalOf.get(s.habit);
+    const goal = goalOf.get(s.subGoal);
     if (!goal) continue;
     for (const p of splitByDay(new Date(s.start), new Date(s.end))) {
       const b = buckets.get(bucketStart(p.day, range));

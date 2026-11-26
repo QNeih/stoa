@@ -1,5 +1,5 @@
 // Data contract shared with the Stoa sheet (see TABS in sheets.ts) and the check-in routine.
-// A goal has sub-goals (`Habit`, the `habits` tab); a session is a timed block on a sub-goal;
+// A goal has sub-goals (`SubGoal`, the `sub_goals` tab); a session is a timed block on a sub-goal;
 // a result is something a sub-goal should bring, checked by hand or derived from time.
 import type { PaletteKey } from "./palette";
 
@@ -13,7 +13,7 @@ export interface Goal {
 }
 
 /** A sub-goal of a goal. Sessions and results belong to sub-goals. */
-export interface Habit {
+export interface SubGoal {
   id: string;
   goal: string;
   name: string;
@@ -29,7 +29,7 @@ export interface Habit {
  */
 export interface Result {
   id: string;
-  habit: string;
+  subGoal: string;
   name: string;
   type: "manual" | "auto";
   /** Minutes a day needs for an automatic result; 30 when the sheet leaves it empty. */
@@ -40,13 +40,13 @@ export interface Result {
 export interface Config {
   goals: Goal[];
   /** Sub-goals. */
-  habits: Habit[];
+  subGoals: SubGoal[];
   results: Result[];
 }
 
 export interface PlanItem {
   /** The sub-goal. */
-  habit: string;
+  subGoal: string;
   task: string;
 }
 
@@ -59,7 +59,7 @@ export interface Plan {
 export interface SessionEntry {
   type: "session";
   /** The sub-goal. */
-  habit: string;
+  subGoal: string;
   task: string;
   start: string;
   end: string;
@@ -95,7 +95,7 @@ export interface ResultCheck {
 export type StoredCheck = ResultCheck & { id?: number };
 
 export interface RunningTimer {
-  habit: string;
+  subGoal: string;
   task: string;
   start: string;
   /** When the user last answered "still going?"; phone-only. */

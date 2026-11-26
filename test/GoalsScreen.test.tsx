@@ -30,9 +30,9 @@ class FakeStore {
 
 // 2026-11-23 is a Monday.
 const at = (day: string, time: string) => `${day}T${time}:00+01:00`;
-const session = (habit: string, day: string, from: string, to: string, i: number): StoredEntry => ({
+const session = (subGoal: string, day: string, from: string, to: string, i: number): StoredEntry => ({
   type: "session",
-  habit,
+  subGoal,
   task: "",
   start: at(day, from),
   end: at(day, to),
@@ -49,14 +49,14 @@ const config: Config = {
     { id: "body", name: "Body", rank: 3, archived: false, color: "rose" },
     { id: "old", name: "Old", rank: 4, archived: true, color: "sky" },
   ],
-  habits: [
+  subGoals: [
     { id: "meditate", goal: "mind", name: "Meditate", archived: false, created: "" },
     { id: "read", goal: "craft", name: "Read", archived: false, created: "" },
     { id: "write", goal: "craft", name: "Write", archived: false, created: "" },
     { id: "draw", goal: "craft", name: "Draw", archived: true, created: "" },
     { id: "walk", goal: "body", name: "Walk", archived: false, created: "" },
   ],
-  results: [{ id: "read30", habit: "read", name: "Read 30 minutes", type: "auto", min_minutes: 30, archived: false }],
+  results: [{ id: "read30", subGoal: "read", name: "Read 30 minutes", type: "auto", min_minutes: 30, archived: false }],
 };
 
 const entries = (): StoredEntry[] => [
@@ -167,7 +167,7 @@ describe("Goals tab", () => {
     expect(store.config.goals.find((g) => g.id === "craft")!.archived).toBe(true);
     expect(cards().map((c) => text(c, ".goal-title"))).toEqual(["Body", "Mind"]);
     // Nothing is deleted: the goal keeps its sub-goals and time, and can be restored.
-    expect(store.config.habits).toHaveLength(5);
+    expect(store.config.subGoals).toHaveLength(5);
     const restore = [...container.querySelectorAll("section button")].find((b) => b.closest("li")!.textContent!.includes("Making"));
     await click(restore!);
     expect(cards()).toHaveLength(3);
@@ -198,11 +198,11 @@ describe("Goals tab", () => {
     await click(buttonByText("Rename"));
     typeName("Compose");
     await click(buttonByText("Save"));
-    expect(store.config.habits.find((h) => h.id === "write")!.name).toBe("Compose");
+    expect(store.config.subGoals.find((h) => h.id === "write")!.name).toBe("Compose");
 
     await click(container.querySelector("button[aria-label='Menu for Compose']"));
     await click(buttonByText("Archive"));
-    expect(store.config.habits.find((h) => h.id === "write")!.archived).toBe(true);
+    expect(store.config.subGoals.find((h) => h.id === "write")!.archived).toBe(true);
     expect(rows()).toHaveLength(1);
 
     await click(buttonByText("Restore"));

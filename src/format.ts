@@ -13,7 +13,7 @@ export const daysAgoText = (n: number | null) =>
   : n === 1 ? "last time spent: yesterday"
   : `last time spent: ${n} days ago`;
 
-export const habitName = (c: Config, id: string) => c.habits.find((x) => x.id === id)?.name ?? id;
+export const subGoalName = (c: Config, id: string) => c.subGoals.find((x) => x.id === id)?.name ?? id;
 export const goalName = (c: Config, id: string) => c.goals.find((g) => g.id === id)?.name ?? id;
 
 /** Goals that are not archived, in rank order. */

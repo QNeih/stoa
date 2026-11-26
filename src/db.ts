@@ -27,9 +27,31 @@ export interface SyncStatus {
 function normalizeConfig(c: Partial<Config> | undefined): Config {
   return {
     goals: (c?.goals ?? []).map((g) => ({ ...g, color: g.color && isPaletteKey(g.color) ? g.color : "" })),
-    habits: (c?.habits ?? []).map((h) => ({ ...h, created: h.created ?? "" })),
+    subGoals: (c?.subGoals ?? []).map((h) => ({ ...h, created: h.created ?? "" })),
     results: c?.results ?? [],
   };
+}
+
+/** Renames `habit` to `subGoal` on a value stored before version 4, when sub-goals were habits. */
+function renamed<T extends object>(v: T): T {
+  if (!v || !("habit" in v)) return v;
+  const { habit, ...rest } = v as T & { habit: string };
+  return { ...rest, subGoal: habit } as T;
+}
+
+/**
+ * The config, plan and timer stored before version 4, with `habits` as `subGoals` and every
+ * `habit` field as `subGoal`.
+ */
+function migrateKv(key: string, v: any): unknown {
+  if (!v) return v;
+  if (key === "config") {
+    const { habits, ...rest } = v;
+    return { ...rest, subGoals: rest.subGoals ?? habits ?? [], results: (v.results ?? []).map(renamed) };
+  }
+  if (key === "plan") return { ...v, items: (v.items ?? []).map(renamed) };
+  if (key === "timer") return renamed(v);
+  return v;
 }
 
 function req<T>(r: IDBRequest<T>): Promise<T> {
@@ -51,7 +73,7 @@ export class Store implements SyncStore {
   private constructor(private db: IDBDatabase) {}
 
   static async open(): Promise<Store> {
-    const open = indexedDB.open(DB_NAME, 3);
+    const open = indexedDB.open(DB_NAME, 4);
     open.onupgradeneeded = (event) => {
       const db = open.result;
       const tx = open.transaction!;
@@ -62,17 +84,25 @@ export class Store implements SyncStore {
       // Version 2 syncs to a Google Sheet, so the GitHub token goes.
       if (event.oldVersion < 2) tx.objectStore(KV).delete("settings");
       if (event.oldVersion < 3) db.createObjectStore(CHECKS, { keyPath: "id", autoIncrement: true }).createIndex("day", "day");
-      if (event.oldVersion >= 1 && event.oldVersion < 3) {
-        // Every entry gets its row id (version 2); counter taps are retired and go (version 3).
-        // Taps already in the sheet stay there.
-        const cursor = tx.objectStore(ENTRIES).openCursor();
-        cursor.onsuccess = () => {
-          const c = cursor.result;
+      if (event.oldVersion >= 1 && event.oldVersion < 4) {
+        // Every entry gets its row id (version 2); counter taps are retired and go (version 3);
+        // taps already in the sheet stay there. Sub-goals were habits until version 4: stored entries,
+        // config, plan and timer get the new names.
+        const entries = tx.objectStore(ENTRIES).openCursor();
+        entries.onsuccess = () => {
+          const c = entries.result;
           if (!c) return;
           if (c.value.type !== "session") c.delete();
-          else if (!c.value.uid) c.update({ ...c.value, uid: newUid() });
+          else if (!c.value.uid || "habit" in c.value) c.update(renamed({ ...c.value, uid: c.value.uid || newUid() }));
           c.continue();
         };
+        const kv = tx.objectStore(KV);
+        for (const key of ["config", "plan", "timer"]) {
+          const get = kv.get(key);
+          get.onsuccess = () => {
+            if (get.result !== undefined) kv.put(migrateKv(key, get.result), key);
+          };
+        }
       }
     };
     const store = new Store(await req(open));
@@ -102,7 +132,7 @@ export class Store implements SyncStore {
   /** The stored plan; one stored before time planning was dropped still carries minutes, a budget and a note, which are left out. */
   async getPlan(): Promise<Plan | null> {
     const p = await this.kvGet<Plan | null>("plan", null);
-    return p && { date: p.date, items: p.items.map((i) => ({ habit: i.habit, task: i.task })) };
+    return p && { date: p.date, items: p.items.map((i) => ({ subGoal: i.subGoal, task: i.task })) };
   }
   isPlanDirty = () => this.kvGet<boolean>("planDirty", false);
 

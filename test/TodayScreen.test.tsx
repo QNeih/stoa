@@ -6,13 +6,14 @@ import type { Store } from "../src/db";
 import { dayOf } from "../src/logs";
 import { TodayScreen } from "../src/screens/Today";
 import { StoaProvider, loadData, type StoaData } from "../src/state";
-import type { Config, LogEntry, Plan, RunningTimer, StoredEntry } from "../src/types";
+import type { Config, LogEntry, Plan, RunningTimer, StoredCheck, StoredEntry } from "../src/types";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 /** The part of the phone's store the Today tab uses, in memory. Signed out, so nothing syncs. */
 class FakeStore {
   entries: StoredEntry[] = [];
+  checks: StoredCheck[] = [];
   planDirty = false;
   constructor(
     public config: Config,
@@ -21,7 +22,7 @@ class FakeStore {
   ) {}
   getConfig = async () => this.config;
   allEntries = async () => this.entries;
-  allChecks = async () => [];
+  allChecks = async () => this.checks;
   getTimer = async () => this.timer;
   setTimer = async (t: RunningTimer | null) => void (this.timer = t);
   getPlan = async () => this.plan;
@@ -44,7 +45,7 @@ const config: Config = {
     { id: "craft", name: "Craft", rank: 1, archived: false, color: "sage" },
     { id: "body", name: "Body", rank: 2, archived: false, color: "rose" },
   ],
-  habits: [
+  subGoals: [
     { id: "read", goal: "craft", name: "Read", archived: false, created: "" },
     { id: "write", goal: "craft", name: "Write", archived: false, created: "" },
     { id: "walk", goal: "body", name: "Walk", archived: false, created: "" },
@@ -56,8 +57,8 @@ const config: Config = {
 const plan = (date = "2026-11-23"): Plan => ({
   date,
   items: [
-    { habit: "read", task: "" },
-    { habit: "write", task: "" },
+    { subGoal: "read", task: "" },
+    { subGoal: "write", task: "" },
   ],
 });
 
@@ -98,7 +99,7 @@ describe("Today screen", () => {
 
   it("shows today's plan as cards in row order, with goal and sub-goal, and time today at the top", async () => {
     const s = new FakeStore(config, plan(), null);
-    s.entries.push({ type: "session", habit: "read", task: "", start: at("08:00"), end: at("08:25"), note: "", id: 1, uid: "a", day: "2026-11-23" });
+    s.entries.push({ type: "session", subGoal: "read", task: "", start: at("08:00"), end: at("08:25"), note: "", id: 1, uid: "a", day: "2026-11-23" });
     await render(s);
     expect(names()).toEqual(["Read", "Write"]);
     expect(cards().map((c) => c.querySelector(".goal-name")!.textContent)).toEqual(["Craft", "Craft"]);
@@ -107,14 +108,36 @@ describe("Today screen", () => {
     expect(button("Start Read")).not.toBeNull();
   });
 
-  it("leaves yesterday's plan off the list", async () => {
+  it("carries yesterday's list over until today's arrives, without sub-goals whose results are met", async () => {
+    const s = new FakeStore(
+      { ...config, results: [{ id: "essay", subGoal: "write", name: "Essay sent", type: "manual", min_minutes: 30, archived: false }] },
+      plan("2026-11-22"),
+      null,
+    );
+    s.checks.push({ id: 1, uid: "c1", result: "essay", day: "2026-11-22", checked_at: "2026-11-22T18:00:00+01:00", note: "", minutes_since_last: 0, removed_at: "" });
+    await render(s);
+    expect(names()).toEqual(["Read"]);
+    expect(container.textContent).toContain("From yesterday's list");
+    expect(store.planDirty).toBe(false);
+  });
+
+  it("makes a carried-over list today's once a card moves", async () => {
     await render(new FakeStore(config, plan("2026-11-22"), null));
+    act(() => button("Move Read").dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })));
+    await settle();
+    expect(store.plan).toEqual({ date: "2026-11-23", items: [{ subGoal: "write", task: "" }, { subGoal: "read", task: "" }] });
+    expect(store.planDirty).toBe(true);
+    expect(container.textContent).not.toContain("From yesterday's list");
+  });
+
+  it("shows nothing for a list of a later day", async () => {
+    await render(new FakeStore(config, plan("2026-11-24"), null));
     expect(cards()).toHaveLength(0);
     expect(container.textContent).toContain("Nothing on today's list yet.");
   });
 
   it("marks the running card, shows Pause and counts today's time on its sub-goal each second", async () => {
-    await render(new FakeStore(config, plan(), { habit: "write", task: "", start: at("09:15") }));
+    await render(new FakeStore(config, plan(), { subGoal: "write", task: "", start: at("09:15") }));
     expect(running()).toEqual([false, true]);
     expect(button("Pause Write")).not.toBeNull();
     expect(button("Start Write")).toBeNull();
@@ -124,17 +147,17 @@ describe("Today screen", () => {
   });
 
   it("runs one timer at a time: starting another card ends the running one as a session", async () => {
-    await render(new FakeStore(config, plan(), { habit: "read", task: "", start: at("09:30") }));
+    await render(new FakeStore(config, plan(), { subGoal: "read", task: "", start: at("09:30") }));
     await tap(button("Start Write"));
-    expect(store.entries.map((e) => [e.habit, e.start, e.end])).toEqual([["read", at("09:30"), at("10:00")]]);
-    expect(store.timer).toMatchObject({ habit: "write", start: at("10:00") });
+    expect(store.entries.map((e) => [e.subGoal, e.start, e.end])).toEqual([["read", at("09:30"), at("10:00")]]);
+    expect(store.timer).toMatchObject({ subGoal: "write", start: at("10:00") });
     expect(running()).toEqual([false, true]);
   });
 
   it("pauses without asking for a note", async () => {
-    await render(new FakeStore(config, plan(), { habit: "read", task: "", start: at("09:30") }));
+    await render(new FakeStore(config, plan(), { subGoal: "read", task: "", start: at("09:30") }));
     await tap(button("Pause Read"));
-    expect(store.entries.map((e) => [e.habit, e.end, e.note])).toEqual([["read", at("10:00"), ""]]);
+    expect(store.entries.map((e) => [e.subGoal, e.end, e.note])).toEqual([["read", at("10:00"), ""]]);
     expect(store.timer).toBeNull();
     expect(running()).toEqual([false, false]);
     expect(cards()[0].querySelector(".today-time")!.textContent).toBe("30m");
@@ -147,9 +170,9 @@ describe("Today screen", () => {
     // Read and Write are on the list, Swim is archived.
     expect(picks.map((p) => p.textContent)).toEqual(["Walk"]);
     await tap(picks[0]);
-    expect(store.plan!.items.at(-1)).toEqual({ habit: "walk", task: "" });
+    expect(store.plan!.items.at(-1)).toEqual({ subGoal: "walk", task: "" });
     expect(store.planDirty).toBe(true);
-    expect(store.timer).toMatchObject({ habit: "walk", task: "" });
+    expect(store.timer).toMatchObject({ subGoal: "walk", task: "" });
     expect(names()).toEqual(["Read", "Write", "Walk"]);
     expect(running()).toEqual([false, false, true]);
     expect(container.querySelector(".sheet")).toBeNull();
@@ -170,7 +193,7 @@ describe("Today screen", () => {
     // The new order shows at once, before the store has it.
     expect(names()).toEqual(["Write", "Read"]);
     await settle();
-    expect(store.plan!.items.map((i) => i.habit)).toEqual(["write", "read"]);
+    expect(store.plan!.items.map((i) => i.subGoal)).toEqual(["write", "read"]);
     expect(store.planDirty).toBe(true);
   });
 
@@ -178,6 +201,6 @@ describe("Today screen", () => {
     await render(new FakeStore(config, plan(), null));
     act(() => button("Move Write").dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "ArrowUp" })));
     await settle();
-    expect(store.plan!.items.map((i) => i.habit)).toEqual(["write", "read"]);
+    expect(store.plan!.items.map((i) => i.subGoal)).toEqual(["write", "read"]);
   });
 });

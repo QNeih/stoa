@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { Header } from "../components/Header";
-import { HabitSelect } from "../components/HabitSelect";
+import { SubGoalSelect } from "../components/SubGoalSelect";
 import { TrashIcon } from "../components/Icons";
 import { OverlapWarning, savedOverlaps } from "../components/OverlapWarning";
 import { toLocalInput } from "../format";
@@ -30,7 +30,7 @@ export function SessionForm({ id, draft, onDone }: { id?: number; draft?: Sessio
     if (isNaN(start.getTime()) || isNaN(end.getTime()) || end <= start) return alert("The end must be after the start.");
     const session: SessionEntry = {
       type: "session",
-      habit: field("habit"),
+      subGoal: field("subGoal"),
       task: field("task").trim(),
       start: isoLocal(start),
       end: isoLocal(end),
@@ -60,7 +60,7 @@ export function SessionForm({ id, draft, onDone }: { id?: number; draft?: Sessio
       <form className="stack" onSubmit={save} onChange={() => setConflict(null)}>
         <label className="stack">
           Sub-goal
-          <HabitSelect name="habit" defaultValue={fill?.habit || undefined} />
+          <SubGoalSelect name="subGoal" defaultValue={fill?.subGoal || undefined} />
         </label>
         <label className="stack">
           Task

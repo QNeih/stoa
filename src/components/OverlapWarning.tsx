@@ -1,4 +1,4 @@
-import { habitName } from "../format";
+import { subGoalName } from "../format";
 import { dayOf } from "../logs";
 import { keepBoth, overlapping, replaceOverlapped, trimOverlapped, type OverlapFix } from "../overlap";
 import { useStoa, type Stoa } from "../state";
@@ -36,7 +36,7 @@ export function OverlapWarning({
       <ul className="small">
         {overlapped.map((e) => (
           <li key={e.id}>
-            {habitName(config, e.habit)} {localDate(new Date(e.start)) === dayOf(session) ? "" : `${e.day} `}
+            {subGoalName(config, e.subGoal)} {localDate(new Date(e.start)) === dayOf(session) ? "" : `${e.day} `}
             {span(e)}
           </li>
         ))}
@@ -47,7 +47,7 @@ export function OverlapWarning({
           {trim
             ? `Trim: ${[
                 `this one ${span(trim.session)}`,
-                ...trim.update.map((u) => `${habitName(config, u.entry.habit)} ends ${formatTime(new Date(u.entry.end))}`),
+                ...trim.update.map((u) => `${subGoalName(config, u.entry.subGoal)} ends ${formatTime(new Date(u.entry.end))}`),
               ].join(", ")}`
             : "Trim"}
         </button>

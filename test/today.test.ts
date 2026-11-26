@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  addableHabits,
+  addableSubGoals,
   addedItem,
   dropIndex,
   isRunning,
@@ -19,7 +19,7 @@ const config: Config = {
     { id: "career", name: "Career", rank: 1, archived: false, color: "sky" },
     { id: "old", name: "Old", rank: 3, archived: true, color: "" },
   ],
-  habits: [
+  subGoals: [
     { id: "partner", goal: "family", name: "Time together", archived: false, created: "" },
     { id: "cv", goal: "career", name: "CV", archived: false, created: "" },
     { id: "apply", goal: "career", name: "Apply", archived: false, created: "" },
@@ -32,14 +32,14 @@ const config: Config = {
 const plan: Plan = {
   date: "2026-11-23",
   items: [
-    { habit: "cv", task: "" },
-    { habit: "partner", task: "Walk" },
+    { subGoal: "cv", task: "" },
+    { subGoal: "partner", task: "Walk" },
   ],
 };
 
-const s = (habit: string, start: string, end: string): LogEntry => ({
+const s = (subGoal: string, start: string, end: string): LogEntry => ({
   type: "session",
-  habit,
+  subGoal,
   task: "",
   start: `${start}+01:00`,
   end: `${end}+01:00`,
@@ -47,14 +47,38 @@ const s = (habit: string, start: string, end: string): LogEntry => ({
 });
 
 describe("today's cards", () => {
-  it("shows the stored plan only on its own day", () => {
-    expect(todayItems(plan, "2026-11-23")).toBe(plan.items);
-    expect(todayItems(plan, "2026-11-24")).toEqual([]);
-    expect(todayItems(null, "2026-11-23")).toEqual([]);
+  it("shows today's plan as it is, carries an earlier one over and never shows a later one", () => {
+    expect(todayItems(plan, "2026-11-23", config, [])).toBe(plan.items);
+    expect(todayItems(plan, "2026-11-25", config, [])).toEqual(plan.items);
+    expect(todayItems(plan, "2026-11-22", config, [])).toEqual([]);
+    expect(todayItems(null, "2026-11-23", config, [])).toEqual([]);
+  });
+
+  it("leaves sub-goals whose results are all met, and archived ones, off a carried-over list", () => {
+    const withResults: Config = {
+      ...config,
+      results: [
+        { id: "sent", subGoal: "cv", name: "CV sent", type: "manual", min_minutes: 30, archived: false },
+        { id: "old", subGoal: "cv", name: "Old", type: "manual", min_minutes: 30, archived: true },
+        { id: "together", subGoal: "partner", name: "Time together", type: "auto", min_minutes: 30, archived: false },
+        { id: "applied", subGoal: "apply", name: "Applied", type: "manual", min_minutes: 30, archived: false },
+      ],
+    };
+    const carried: Plan = { date: "2026-11-22", items: [...plan.items, { subGoal: "apply", task: "" }, { subGoal: "network", task: "" }] };
+    const check = (result: string, removed_at = "") => ({ uid: result, result, day: "2026-11-22", checked_at: "", note: "", minutes_since_last: 0, removed_at });
+    // Nothing checked: every active sub-goal carries over.
+    expect(todayItems(carried, "2026-11-23", withResults, []).map((i) => i.subGoal)).toEqual(["cv", "partner", "apply"]);
+    // CV sent checked: its only active result is met. An unchecked check does not count.
+    expect(todayItems(carried, "2026-11-23", withResults, [check("sent"), check("applied", "2026-11-22T20:00:00+01:00")]).map((i) => i.subGoal)).toEqual([
+      "partner",
+      "apply",
+    ]);
+    // An automatic result counts again each day, so its sub-goal stays.
+    expect(todayItems({ ...carried, date: "2026-11-23" }, "2026-11-23", withResults, [check("sent")])).toHaveLength(4);
   });
 
   it("matches the running timer by sub-goal and task", () => {
-    const timer: RunningTimer = { habit: "partner", task: "Walk", start: "2026-11-23T09:00:00+01:00" };
+    const timer: RunningTimer = { subGoal: "partner", task: "Walk", start: "2026-11-23T09:00:00+01:00" };
     expect(plan.items.map((i) => isRunning(timer, i))).toEqual([false, true]);
     expect(isRunning({ ...timer, task: "" }, plan.items[1])).toBe(false);
     expect(isRunning(null, plan.items[0])).toBe(false);
@@ -87,42 +111,42 @@ describe("reorder", () => {
 
 describe("add out of plan", () => {
   it("offers active sub-goals of active goals not yet on the list, in goal rank order", () => {
-    expect(addableHabits(config, plan.items).map((h) => h.id)).toEqual(["apply"]);
-    expect(addableHabits(config, []).map((h) => h.id)).toEqual(["cv", "apply", "partner"]);
+    expect(addableSubGoals(config, plan.items).map((h) => h.id)).toEqual(["apply"]);
+    expect(addableSubGoals(config, []).map((h) => h.id)).toEqual(["cv", "apply", "partner"]);
   });
 
   it("appends a row to today's plan", () => {
     const added = withItems(plan, "2026-11-23", [...plan.items, addedItem("apply")]);
-    expect(added.items.at(-1)).toEqual({ habit: "apply", task: "" });
+    expect(added.items.at(-1)).toEqual({ subGoal: "apply", task: "" });
   });
 
   it("starts a new plan for today when the stored one is for another day", () => {
     expect(withItems(plan, "2026-11-24", [addedItem("apply")])).toEqual({
       date: "2026-11-24",
-      items: [{ habit: "apply", task: "" }],
+      items: [{ subGoal: "apply", task: "" }],
     });
     expect(withItems(null, "2026-11-24", []).items).toEqual([]);
   });
 });
 
 describe("one timer at a time", () => {
-  const running: RunningTimer = { habit: "cv", task: "", start: "2026-11-23T09:00:00+01:00" };
+  const running: RunningTimer = { subGoal: "cv", task: "", start: "2026-11-23T09:00:00+01:00" };
 
   it("ends the running timer as a session where the next one starts", () => {
-    const { session, timer } = switchTimer(running, { habit: "partner", task: " Walk " }, new Date("2026-11-23T09:30:00+01:00"));
+    const { session, timer } = switchTimer(running, { subGoal: "partner", task: " Walk " }, new Date("2026-11-23T09:30:00+01:00"));
     expect(session).toEqual({
       type: "session",
-      habit: "cv",
+      subGoal: "cv",
       task: "",
       start: "2026-11-23T09:00:00+01:00",
       end: "2026-11-23T09:30:00+01:00",
       note: "",
     });
-    expect(timer).toEqual({ habit: "partner", task: "Walk", start: "2026-11-23T09:30:00+01:00" });
+    expect(timer).toEqual({ subGoal: "partner", task: "Walk", start: "2026-11-23T09:30:00+01:00" });
   });
 
   it("saves nothing when no timer runs", () => {
-    expect(switchTimer(null, { habit: "cv", task: "" }, new Date("2026-11-23T09:30:00+01:00")).session).toBeNull();
+    expect(switchTimer(null, { subGoal: "cv", task: "" }, new Date("2026-11-23T09:30:00+01:00")).session).toBeNull();
   });
 
   it("gives a session a minute when it would end at or before its start", () => {
@@ -140,7 +164,7 @@ describe("time today", () => {
   ];
 
   it("adds the running timer to the saved sessions", () => {
-    const timer: RunningTimer = { habit: "cv", task: "", start: "2026-11-23T09:45:00+01:00" };
+    const timer: RunningTimer = { subGoal: "cv", task: "", start: "2026-11-23T09:45:00+01:00" };
     expect(msToday(entries, null, now)).toBe(90 * 60_000);
     expect(msToday(entries, timer, now)).toBe(105 * 60_000);
     expect(msToday(entries, timer, now, "cv")).toBe(45 * 60_000);
@@ -148,7 +172,7 @@ describe("time today", () => {
   });
 
   it("counts only today's part of a timer started yesterday", () => {
-    const timer: RunningTimer = { habit: "apply", task: "", start: "2026-11-22T23:00:00+01:00" };
+    const timer: RunningTimer = { subGoal: "apply", task: "", start: "2026-11-22T23:00:00+01:00" };
     expect(msToday([], timer, now, "apply")).toBe(10 * 3600_000);
   });
 });

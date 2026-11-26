@@ -10,7 +10,7 @@ import { autoResultTotals } from "../results";
 import { goalStats, rangesWithData, timeBuckets, type Range } from "../stats";
 import { useStoa } from "../state";
 import { formatDuration, parseLocalDate } from "../time";
-import type { Habit } from "../types";
+import type { SubGoal } from "../types";
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
@@ -28,7 +28,7 @@ export function GoalDetail({ goalId }: { goalId: string }) {
   const stoa = useStoa();
   const { config, entries } = stoa;
   const goal = config.goals.find((g) => g.id === goalId);
-  const [menu, setMenu] = useState<"goal" | Habit | null>(null);
+  const [menu, setMenu] = useState<"goal" | SubGoal | null>(null);
   const [picked, setPicked] = useState<Range>("week");
   const now = new Date();
 
@@ -42,11 +42,11 @@ export function GoalDetail({ goalId }: { goalId: string }) {
     );
   }
 
-  const habits = config.habits.filter((h) => h.goal === goal.id);
-  const archivedHabits = habits.filter((h) => h.archived);
+  const subGoals = config.subGoals.filter((h) => h.goal === goal.id);
+  const archivedSubGoals = subGoals.filter((h) => h.archived);
   const stats = goalStats(config, entries, now).find((s) => s.goal === goal.id);
-  const habitIds = new Set(habits.map((h) => h.id));
-  const goalEntries = entries.filter((e) => habitIds.has(e.habit));
+  const subGoalIds = new Set(subGoals.map((h) => h.id));
+  const goalEntries = entries.filter((e) => subGoalIds.has(e.subGoal));
   const ranges = rangesWithData(goalEntries, now);
   const range = ranges.includes(picked) ? picked : ranges[0];
   const buckets: BarBucket[] = range
@@ -106,15 +106,15 @@ export function GoalDetail({ goalId }: { goalId: string }) {
           <h2>Sub-goals</h2>
           <ul className="list">
             {stats.subGoals
-              .filter((s) => !habits.find((h) => h.id === s.habit)!.archived)
+              .filter((s) => !subGoals.find((h) => h.id === s.subGoal)!.archived)
               .map((s) => {
-                const habit = habits.find((h) => h.id === s.habit)!;
-                const autos = config.results.filter((r) => r.habit === habit.id && r.type === "auto" && !r.archived);
+                const subGoal = subGoals.find((h) => h.id === s.subGoal)!;
+                const autos = config.results.filter((r) => r.subGoal === subGoal.id && r.type === "auto" && !r.archived);
                 return (
-                  <li key={habit.id} className="sub-goal-row">
+                  <li key={subGoal.id} className="sub-goal-row">
                     <div className="row">
-                      <strong>{habit.name}</strong>
-                      <button className="icon" aria-label={`Menu for ${habit.name}`} onClick={() => setMenu(habit)}>
+                      <strong>{subGoal.name}</strong>
+                      <button className="icon" aria-label={`Menu for ${subGoal.name}`} onClick={() => setMenu(subGoal)}>
                         ⋯
                       </button>
                     </div>
@@ -136,14 +136,14 @@ export function GoalDetail({ goalId }: { goalId: string }) {
         </>
       )}
 
-      {archivedHabits.length > 0 && (
+      {archivedSubGoals.length > 0 && (
         <section>
           <h2>Archived sub-goals</h2>
           <ul className="list">
-            {archivedHabits.map((h) => (
+            {archivedSubGoals.map((h) => (
               <li key={h.id} className="row">
                 <span>{h.name}</span>
-                <button className="link" onClick={() => void stoa.setHabitArchived(h.id, false)}>
+                <button className="link" onClick={() => void stoa.setSubGoalArchived(h.id, false)}>
                   Restore
                 </button>
               </li>
@@ -170,8 +170,8 @@ export function GoalDetail({ goalId }: { goalId: string }) {
         <ItemMenu
           title={menu.name}
           name={menu.name}
-          onRename={(name) => void stoa.renameHabit(menu.id, name)}
-          onArchive={() => void stoa.setHabitArchived(menu.id, true)}
+          onRename={(name) => void stoa.renameSubGoal(menu.id, name)}
+          onArchive={() => void stoa.setSubGoalArchived(menu.id, true)}
           onClose={() => setMenu(null)}
         />
       )}

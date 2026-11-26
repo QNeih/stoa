@@ -1,5 +1,5 @@
 // Roll-up: rewrite the `logs` and `result_checks` rows of changed days, sync the config tabs,
-// read today's plan.
+// read the latest plan up to today.
 import type { Config, LogEntry, Plan, ResultCheck, StoredEntry } from "./types";
 import {
   cellsText,
@@ -14,7 +14,7 @@ import {
   logOrder,
   mergePlan,
   mergeResults,
-  planFromRows,
+  latestPlanFromRows,
   rowCells,
   type Cell,
   type Row,
@@ -52,7 +52,7 @@ export interface RollUpResult {
 
 const message = (e: unknown) => String(e instanceof Error ? e.message : e);
 const same = (a: Cell[][], b: Cell[][]) => JSON.stringify(a.map(cellsText)) === JSON.stringify(b.map(cellsText));
-const isEmpty = (c: Config) => !c.goals.length && !c.habits.length;
+const isEmpty = (c: Config) => !c.goals.length && !c.subGoals.length;
 
 /** A tab whose rows the phone writes per day: the phone's copy of a changed day replaces the rows it owns. */
 interface DayTab {
@@ -115,7 +115,7 @@ async function pushDays(store: SyncStore, api: SheetsApi, sheetId: string, remot
  * Goals and sub-goals are written as the phone has them. Results belong to the check-in: the phone's
  * names and archived flags go onto the sheet's rows, and the phone then takes the merged list.
  */
-async function syncConfig(store: SyncStore, api: SheetsApi, sheetId: string, remote: Pick<Tables, "goals" | "habits" | "results">): Promise<boolean> {
+async function syncConfig(store: SyncStore, api: SheetsApi, sheetId: string, remote: Pick<Tables, "goals" | "sub_goals" | "results">): Promise<boolean> {
   const local = await store.getConfig();
   const remoteConfig = configFromRows(remote);
   if (!(await store.isConfigDirty()) && !(isEmpty(remoteConfig) && !isEmpty(local))) {
@@ -126,7 +126,7 @@ async function syncConfig(store: SyncStore, api: SheetsApi, sheetId: string, rem
   try {
     const merged = mergeResults(remote.results, local.results);
     const rows = { ...configToRows(local), results: merged.rows };
-    const changed = (["goals", "habits", "results"] as const).filter((t) => !same(rows[t], remote[t].map((r) => rowCells(t, r))));
+    const changed = (["goals", "sub_goals", "results"] as const).filter((t) => !same(rows[t], remote[t].map((r) => rowCells(t, r))));
     if (changed.length) await api.write(sheetId, Object.fromEntries(changed.map((t) => [t, rows[t]])));
     // An edit made during the push leaves the config dirty; the next roll-up merges it.
     if (!(await store.isConfigDirty())) await store.setConfig({ ...(await store.getConfig()), results: merged.results }, false);
@@ -160,7 +160,7 @@ async function pushPlan(store: SyncStore, api: SheetsApi, sheetId: string, remot
 
 export async function rollUp(store: SyncStore, api: SheetsApi, sheetId: string, today: string): Promise<RollUpResult> {
   const result: RollUpResult = { pushedDays: [], configPushed: false, plan: null, errors: [] };
-  const remote = await api.read(sheetId, ["logs", "result_checks", "goals", "habits", "results", "plans"]);
+  const remote = await api.read(sheetId, ["logs", "result_checks", "goals", "sub_goals", "results", "plans"]);
 
   try {
     result.pushedDays = await pushDays(store, api, sheetId, remote);
@@ -184,7 +184,7 @@ export async function rollUp(store: SyncStore, api: SheetsApi, sheetId: string, 
   // A plan still waiting to be written (failed push, or edited meanwhile) stays as the phone has it.
   if (await store.isPlanDirty()) result.plan = await store.getPlan();
   else {
-    result.plan = planFromRows(plans, today);
+    result.plan = latestPlanFromRows(plans, today);
     await store.setPlan(result.plan, false);
   }
   return result;

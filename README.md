@@ -6,6 +6,9 @@ It is an installable offline web app (PWA): React and TypeScript, IndexedDB, and
 ## Use
 
 - **Today**: today's list of sub-goals from the Stoa sheet as cards in row order, each with its goal colour, and the time spent today at the top.
+  Until the check-in writes a list for today, the latest earlier list carries over ("From yesterday's list"), without archived
+  sub-goals and without sub-goals whose results are all met (every result manual and checked; an automatic result counts again
+  each day, so its sub-goal stays). Moving a card or adding one makes the carried list today's.
   Drag a card's handle to reorder. Play starts a timer; one timer at a time, so starting another ends the running one as a session.
   Pause ends the session; a note can be added later in Log. The running card stands out and counts today's time on its sub-goal.
   Forgot to start? Change the running timer's start (up to 24 hours back). The timer survives closing the app; after 4 hours a
@@ -51,11 +54,12 @@ On first sign-in Stoa creates the sheet with a Drive app property (`stoa=sheet`)
 Every tab starts with a header row; rows are read by header name. Values are written raw, so times stay text.
 
 A newer app version adds its new columns to the end of an existing tab's header row; old rows stay as they are.
+Sub-goals were once called habits: opening an older sheet renames its `habits` tab to `sub_goals` and every `habit` header cell to `sub_goal`, keeping the rows.
 
 - `goals`: id, name, rank, archived, color (one of eight palette keys; empty picks one from the id).
-  `habits` (sub-goals): id, goal, name, archived, created (local date; empty means older than any session).
+  `sub_goals`: id, goal, name, archived, created (local date; empty means older than any session).
   The app reads them, and writes them back after a change on the phone. An empty sheet takes the phone's config.
-- `results`: id, habit, name, type (`manual` or `auto`), min_minutes (auto only; empty means 30), archived.
+- `results`: id, sub_goal, name, type (`manual` or `auto`), min_minutes (auto only; empty means 30), archived.
   Created by the daily check-in, never by the app; the app only renames and archives them, merged by id.
   An automatic result is done on every day with at least min_minutes of sessions on its sub-goal; that is
   worked out on the phone and never stored.
@@ -63,11 +67,11 @@ A newer app version adds its new columns to the end of an existing tab's header 
   manual result is checked; unchecking fills `removed_at` and keeps the row. A roll-up replaces the rows of each
   changed day, like `logs`. `minutes_since_last` is the sub-goal time since the previous check of any of its results
   (or since the sub-goal was created, for its first check).
-- `plans`: date, habit, task (one row per sub-goal on the day's list; row order is the card order). Written by
+- `plans`: date, sub_goal, task (one row per sub-goal on the day's list; row order is the card order). Written by
   the daily check-in, which only picks the sub-goals; Stoa plans no minutes or time budget. The app may reorder a
   day's rows and add a sub-goal; it then rewrites that day's rows. Older sheets may still hold a `minutes`
   column on `plans` (cleared when the app rewrites the tab) and a `plan_days` tab (ignored).
-- `logs`: id, day, type, habit, task, start, end, note, counter, delta. Written by the app: a roll-up replaces
+- `logs`: id, day, type, sub_goal, task, start, end, note, counter, delta. Written by the app: a roll-up replaces
   the session rows of each changed day with the phone's copy. `id` is made on the phone; `day` is the local
   start date. Sessions are stored unsplit; the stats split them at local midnight.
 - Counters are retired: the `counters` tab and the `counter` and `delta` columns stay for old rows, which the

@@ -1,11 +1,11 @@
 // The Log's quick input: one line of free text, e.g. "45m gym yesterday", "1h30 job search 14:00" or
 // "gym 45 min on 2026-11-20", read into a session on a sub-goal. Pure, so the Log can preview it live.
 import { isoLocal, localDate, parseLocalDate } from "./time";
-import type { Habit, SessionEntry } from "./types";
+import type { SubGoal, SessionEntry } from "./types";
 
 export interface QuickResult {
   /** The matched sub-goal, or null when the text names none or several. */
-  habit: Habit | null;
+  subGoal: SubGoal | null;
   /** Local date the session starts on. */
   day: string;
   start: Date | null;
@@ -45,10 +45,10 @@ function clock(hText: string, mText: string | undefined, ampm: string | undefine
 }
 
 /** Case-insensitive match of `query` against sub-goal names: exact, then prefix, then contains, then named inside the query. */
-export function matchHabit(query: string, habits: Habit[]): { habit: Habit | null; candidates: Habit[] } {
+export function matchSubGoal(query: string, subGoals: SubGoal[]): { subGoal: SubGoal | null; candidates: SubGoal[] } {
   const q = query.trim().toLowerCase().replace(/\s+/g, " ");
-  if (!q) return { habit: null, candidates: [] };
-  const name = (h: Habit) => h.name.trim().toLowerCase().replace(/\s+/g, " ");
+  if (!q) return { subGoal: null, candidates: [] };
+  const name = (h: SubGoal) => h.name.trim().toLowerCase().replace(/\s+/g, " ");
   const levels: ((n: string) => boolean)[] = [
     (n) => n === q,
     (n) => n.startsWith(q),
@@ -56,19 +56,19 @@ export function matchHabit(query: string, habits: Habit[]): { habit: Habit | nul
     (n) => ` ${q} `.includes(` ${n} `),
   ];
   for (const level of levels) {
-    const found = habits.filter((h) => level(name(h)));
-    if (found.length) return { habit: found.length === 1 ? found[0] : null, candidates: found };
+    const found = subGoals.filter((h) => level(name(h)));
+    if (found.length) return { subGoal: found.length === 1 ? found[0] : null, candidates: found };
   }
-  return { habit: null, candidates: [] };
+  return { subGoal: null, candidates: [] };
 }
 
 /**
- * Reads one line into a session. `habits` should be the sub-goals that can take new sessions (not archived).
+ * Reads one line into a session. `subGoals` should be the sub-goals that can take new sessions (not archived).
  * Duration: "45m", "45 min", "1h", "1h30", "1.5h", "2 hours". Times: "14:00" (start), "14:00-15:30", "9am".
  * Date: today unless "yesterday", a weekday name (its latest day up to today; "last" goes a week further when
  * that is today) or an ISO date. The rest of the words name the sub-goal.
  */
-export function parseQuickInput(text: string, habits: Habit[], now: Date): QuickResult {
+export function parseQuickInput(text: string, subGoals: SubGoal[], now: Date): QuickResult {
   const problems: string[] = [];
   const today = localDate(now);
   let rest = ` ${text.toLowerCase()} `;
@@ -159,10 +159,10 @@ export function parseQuickInput(text: string, habits: Habit[], now: Date): Quick
     .join(" ")
     .replace(/[,;.]+/g, " ")
     .trim();
-  const { habit, candidates } = matchHabit(query, habits);
+  const { subGoal, candidates } = matchSubGoal(query, subGoals);
   if (!query) problems.push("Name a sub-goal.");
   else if (candidates.length > 1) problems.push(`"${query}" fits ${candidates.map((h) => h.name).join(", ")}; type more of the name.`);
-  else if (!habit) problems.push(`No sub-goal matches "${query}".`);
+  else if (!subGoal) problems.push(`No sub-goal matches "${query}".`);
 
   // Place the session.
   let placed = false;
@@ -188,11 +188,11 @@ export function parseQuickInput(text: string, habits: Habit[], now: Date): Quick
   if (day > today) problems.push("The date is in the future.");
   else if (end && end.getTime() > now.getTime()) problems.push("That ends in the future.");
 
-  return { habit, day: start ? localDate(start) : day, start, end, minutes, placed, problems };
+  return { subGoal, day: start ? localDate(start) : day, start, end, minutes, placed, problems };
 }
 
 /** The session to save, or null while the text has problems. */
 export function quickSession(r: QuickResult): SessionEntry | null {
-  if (r.problems.length || !r.habit || !r.start || !r.end) return null;
-  return { type: "session", habit: r.habit.id, task: "", start: isoLocal(r.start), end: isoLocal(r.end), note: "" };
+  if (r.problems.length || !r.subGoal || !r.start || !r.end) return null;
+  return { type: "session", subGoal: r.subGoal.id, task: "", start: isoLocal(r.start), end: isoLocal(r.end), note: "" };
 }

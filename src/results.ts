@@ -1,13 +1,13 @@
 // Results of sub-goals: automatic results derived from session time, the time behind a manual
 // check, and the done list. Everything here is derived on read, so edits to sessions show at once.
 import { daysBetween, parseLocalDate, splitByDay } from "./time";
-import type { Habit, LogEntry, Result, ResultCheck } from "./types";
+import type { SubGoal, LogEntry, Result, ResultCheck } from "./types";
 
 /** Session time per local day on one sub-goal, split at local midnight. */
-export function msByDay(entries: LogEntry[], habit: string): Map<string, number> {
+export function msByDay(entries: LogEntry[], subGoal: string): Map<string, number> {
   const out = new Map<string, number>();
   for (const s of entries) {
-    if (s.habit !== habit) continue;
+    if (s.subGoal !== subGoal) continue;
     for (const p of splitByDay(new Date(s.start), new Date(s.end))) out.set(p.day, (out.get(p.day) ?? 0) + p.ms);
   }
   return out;
@@ -16,7 +16,7 @@ export function msByDay(entries: LogEntry[], habit: string): Map<string, number>
 /** Days, oldest first, on which an automatic result is done: at least `min_minutes` of sessions on its sub-goal. */
 export function autoDoneDays(result: Result, entries: LogEntry[]): string[] {
   if (result.type !== "auto") return [];
-  return [...msByDay(entries, result.habit)]
+  return [...msByDay(entries, result.subGoal)]
     .filter(([, ms]) => ms > 0 && ms >= result.min_minutes * 60_000)
     .map(([day]) => day)
     .sort();
@@ -26,12 +26,12 @@ export function autoDoneDays(result: Result, entries: LogEntry[]): string[] {
  * Whole minutes of sessions on a sub-goal from `since` until `until`. Without `since` it counts from
  * the start of the sub-goal's `created` day, or all its sessions when it has no date.
  */
-export function minutesSince(entries: LogEntry[], habit: Habit, since: string | null, until: Date): number {
-  const from = since ? new Date(since).getTime() : habit.created ? parseLocalDate(habit.created).getTime() : -Infinity;
+export function minutesSince(entries: LogEntry[], subGoal: SubGoal, since: string | null, until: Date): number {
+  const from = since ? new Date(since).getTime() : subGoal.created ? parseLocalDate(subGoal.created).getTime() : -Infinity;
   const to = until.getTime();
   let ms = 0;
   for (const s of entries) {
-    if (s.habit !== habit.id) continue;
+    if (s.subGoal !== subGoal.id) continue;
     const start = Math.max(new Date(s.start).getTime(), from);
     const end = Math.min(new Date(s.end).getTime(), to);
     if (end > start) ms += end - start;
@@ -51,11 +51,11 @@ export function lastCheck(checks: ResultCheck[], result: string, before: Date): 
   return last;
 }
 
-/** The latest standing check made before `before` of any result on sub-goal `habit`, or null when there is none. */
-export function lastHabitCheck(checks: ResultCheck[], results: Result[], habit: string, before: Date): ResultCheck | null {
+/** The latest standing check made before `before` of any result on sub-goal `subGoal`, or null when there is none. */
+export function lastSubGoalCheck(checks: ResultCheck[], results: Result[], subGoal: string, before: Date): ResultCheck | null {
   let last: ResultCheck | null = null;
   for (const r of results) {
-    if (r.habit !== habit) continue;
+    if (r.subGoal !== subGoal) continue;
     const c = lastCheck(checks, r.id, before);
     if (c && (!last || new Date(c.checked_at) > new Date(last.checked_at))) last = c;
   }
@@ -63,11 +63,11 @@ export function lastHabitCheck(checks: ResultCheck[], results: Result[], habit: 
 }
 
 /**
- * `minutes_since_last` for a check made at `at` of a result on `habit`: sub-goal time since the last
+ * `minutes_since_last` for a check made at `at` of a result on `subGoal`: sub-goal time since the last
  * standing check of any of its results, or since the sub-goal began for the first.
  */
-export function minutesSinceLastCheck(results: Result[], habit: Habit, checks: ResultCheck[], entries: LogEntry[], at: Date): number {
-  return minutesSince(entries, habit, lastHabitCheck(checks, results, habit.id, at)?.checked_at ?? null, at);
+export function minutesSinceLastCheck(results: Result[], subGoal: SubGoal, checks: ResultCheck[], entries: LogEntry[], at: Date): number {
+  return minutesSince(entries, subGoal, lastSubGoalCheck(checks, results, subGoal.id, at)?.checked_at ?? null, at);
 }
 
 /** The standing checks of a manual result (not undone), in the order given. */
@@ -116,7 +116,7 @@ export function doneResults(results: Result[], checks: ResultCheck[], entries: L
   }
   for (const r of results) {
     if (r.type !== "auto") continue;
-    const byDay = msByDay(entries, r.habit);
+    const byDay = msByDay(entries, r.subGoal);
     for (const day of autoDoneDays(r, entries)) out.push({ type: "auto", result: r.id, day, ms: byDay.get(day)! });
   }
   const checkedAt = (d: DoneResult) => (d.type === "manual" ? d.check.checked_at : "");
@@ -127,7 +127,7 @@ export function doneResults(results: Result[], checks: ResultCheck[], entries: L
 
 /** Session time on the days an automatic result was done, and how many days that was. */
 export function autoResultTotals(result: Result, entries: LogEntry[]): { ms: number; days: number } {
-  const byDay = msByDay(entries, result.habit);
+  const byDay = msByDay(entries, result.subGoal);
   const days = autoDoneDays(result, entries);
   return { ms: days.reduce((n, d) => n + byDay.get(d)!, 0), days: days.length };
 }

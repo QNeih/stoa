@@ -1,10 +1,10 @@
 import { useEffect, useReducer, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent } from "react";
 import { Header } from "../components/Header";
-import { activeGoals, goalName, habitName, toLocalInput } from "../format";
+import { activeGoals, goalName, subGoalName, toLocalInput } from "../format";
 import { PALETTE, goalColor } from "../palette";
 import { useStoa } from "../state";
-import { dropIndex, addableHabits, isRunning, msToday, todayItems } from "../today";
-import { formatClock, formatDuration, formatTime, planDay } from "../time";
+import { dropIndex, addableSubGoals, isRunning, msToday, todayItems } from "../today";
+import { daysBetween, formatClock, formatDuration, formatTime, parseLocalDate, planDay } from "../time";
 import type { Config, PlanItem } from "../types";
 
 /** Re-renders every second while `active`, so running time counts up; returns the current time. */
@@ -19,8 +19,8 @@ function useNow(active: boolean): Date {
 }
 
 /** The goal colour of a sub-goal, as a CSS custom property for the card accent. */
-function accent(config: Config, habit: string): CSSProperties {
-  const goal = config.goals.find((g) => g.id === config.habits.find((h) => h.id === habit)?.goal);
+function accent(config: Config, subGoal: string): CSSProperties {
+  const goal = config.goals.find((g) => g.id === config.subGoals.find((h) => h.id === subGoal)?.goal);
   return { "--goal": goal ? PALETTE[goalColor(goal)] : "var(--line)" } as CSSProperties;
 }
 
@@ -119,11 +119,19 @@ const PauseIcon = () => (
 function itemKeys(items: PlanItem[]): string[] {
   const seen = new Map<string, number>();
   return items.map((i) => {
-    const k = `${i.habit}\u0000${i.task}`;
+    const k = `${i.subGoal}\u0000${i.task}`;
     const n = seen.get(k) ?? 0;
     seen.set(k, n + 1);
     return `${k}\u0000${n}`;
   });
+}
+
+/** Where a carried-over list comes from: "From yesterday's list" or "From Monday's list". */
+function carriedLabel(date: string, today: string): string {
+  const days = daysBetween(date, today);
+  if (days === 1) return "From yesterday's list";
+  const weekday = parseLocalDate(date).toLocaleDateString(undefined, { weekday: "long" });
+  return days < 7 ? `From ${weekday}'s list` : `From the list of ${date}`;
 }
 
 /**
@@ -132,28 +140,29 @@ function itemKeys(items: PlanItem[]): string[] {
  * sub-goal on the list and starts it.
  */
 export function TodayScreen() {
-  const { config, entries, plan, timer, account, startTimer, pauseTimer, moveTodayItem } = useStoa();
+  const { config, entries, checks, plan, timer, account, startTimer, pauseTimer, moveTodayItem } = useStoa();
   const now = useNow(!!timer);
   const today = planDay(now);
-  const items = todayItems(plan, today);
+  const items = todayItems(plan, today, config, checks);
+  const carried = items.length > 0 && plan !== null && plan.date !== today;
   const keys = itemKeys(items);
   const { list, drag, handle, offset } = useCardDrag(items.length, (from, to) => void moveTodayItem(from, to));
   const [picking, setPicking] = useState(false);
-  const goalOf = (id: string) => goalName(config, config.habits.find((h) => h.id === id)?.goal ?? "");
+  const goalOf = (id: string) => goalName(config, config.subGoals.find((h) => h.id === id)?.goal ?? "");
   // A timer whose item is not on today's list (started before midnight, or the plan changed) still shows.
   const orphan = timer && !items.some((i) => isRunning(timer, i)) ? timer : null;
 
   const card = (item: PlanItem, index: number | null, key: string) => {
     const running = isRunning(timer, item);
-    const name = habitName(config, item.habit);
-    const ms = msToday(entries, timer, now, item.habit);
+    const name = subGoalName(config, item.subGoal);
+    const ms = msToday(entries, timer, now, item.subGoal);
     const dy = index === null ? 0 : offset(index);
     const lifted = index !== null && drag?.from === index;
     return (
       <li
         key={key}
         className={["plan-card", running && "running", lifted && "lifted"].filter(Boolean).join(" ")}
-        style={{ ...accent(config, item.habit), transform: dy ? `translateY(${dy}px)` : undefined }}
+        style={{ ...accent(config, item.subGoal), transform: dy ? `translateY(${dy}px)` : undefined }}
       >
         {index !== null ? (
           <button className="grip" aria-label={`Move ${name}`} {...handle(index)}>
@@ -163,7 +172,7 @@ export function TodayScreen() {
           <span className="grip" />
         )}
         <div className="what">
-          <div className="goal-name">{goalOf(item.habit)}</div>
+          <div className="goal-name">{goalOf(item.subGoal)}</div>
           <div className="sub-goal">{name}</div>
           {item.task && <div className="task">{item.task}</div>}
         </div>
@@ -179,7 +188,7 @@ export function TodayScreen() {
             <PauseIcon />
           </button>
         ) : (
-          <button className="play" aria-label={`Start ${name}`} onClick={() => void startTimer(item.habit, item.task)}>
+          <button className="play" aria-label={`Start ${name}`} onClick={() => void startTimer(item.subGoal, item.task)}>
             <PlayIcon />
           </button>
         )}
@@ -192,10 +201,11 @@ export function TodayScreen() {
       <Header title="Today">
         <span className="muted small">{formatDuration(msToday(entries, timer, now))} today</span>
       </Header>
+      {carried && <p className="muted small">{carriedLabel(plan!.date, today)}</p>}
       {items.length > 0 || orphan ? (
         <ol ref={list} className={drag ? "plan-list dragging" : "plan-list"}>
           {items.map((item, i) => card(item, i, keys[i]))}
-          {orphan && card({ habit: orphan.habit, task: orphan.task }, null, "running")}
+          {orphan && card({ subGoal: orphan.subGoal, task: orphan.task }, null, "running")}
         </ol>
       ) : (
         <section className="card">
@@ -280,8 +290,8 @@ function TimerStart() {
 /** A sheet listing the sub-goals that are not on today's list; one tap adds one and starts it. */
 function AddPicker({ items, onClose }: { items: PlanItem[]; onClose: () => void }) {
   const { config, addAndStart } = useStoa();
-  const addable = addableHabits(config, items);
-  const hasSubGoals = config.habits.some((h) => !h.archived);
+  const addable = addableSubGoals(config, items);
+  const hasSubGoals = config.subGoals.some((h) => !h.archived);
   return (
     <div className="sheet-backdrop" onClick={onClose}>
       <div className="sheet" role="dialog" aria-label="Add to today" onClick={(e) => e.stopPropagation()}>
@@ -290,12 +300,12 @@ function AddPicker({ items, onClose }: { items: PlanItem[]; onClose: () => void 
           <p className="muted">{hasSubGoals ? "Every sub-goal is on today's list." : "Add a sub-goal under Goals first."}</p>
         )}
         {activeGoals(config).map((g) => {
-          const habits = addable.filter((h) => h.goal === g.id);
-          if (!habits.length) return null;
+          const subGoals = addable.filter((h) => h.goal === g.id);
+          if (!subGoals.length) return null;
           return (
             <section key={g.id}>
               <h3 className="muted small">{g.name}</h3>
-              {habits.map((h) => (
+              {subGoals.map((h) => (
                 <button
                   key={h.id}
                   className="pick"

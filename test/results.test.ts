@@ -1,17 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { autoDoneDays, doneResults, lastCheck, lastHabitCheck, minutesSince, minutesSinceLastCheck, inDoneWindow, openResults, standingCheckByUid, standingChecks } from "../src/results";
-import type { Habit, LogEntry, Result, ResultCheck } from "../src/types";
+import { autoDoneDays, doneResults, lastCheck, lastSubGoalCheck, minutesSince, minutesSinceLastCheck, inDoneWindow, openResults, standingCheckByUid, standingChecks } from "../src/results";
+import type { SubGoal, LogEntry, Result, ResultCheck } from "../src/types";
 
-const s = (habit: string, start: string, end: string): LogEntry => ({
+const s = (subGoal: string, start: string, end: string): LogEntry => ({
   type: "session",
-  habit,
+  subGoal,
   task: "",
   start: `${start}+01:00`,
   end: `${end}+01:00`,
   note: "",
 });
 
-const run: Habit = { id: "run", goal: "health", name: "Run", archived: false, created: "" };
+const run: SubGoal = { id: "run", goal: "health", name: "Run", archived: false, created: "" };
 const entries: LogEntry[] = [
   s("run", "2026-11-20T08:00:00", "2026-11-20T08:20:00"), // 20 min
   s("run", "2026-11-20T18:00:00", "2026-11-20T18:15:00"), // 35 min that day
@@ -20,8 +20,8 @@ const entries: LogEntry[] = [
   s("read", "2026-11-22T09:00:00", "2026-11-22T11:00:00"),
 ];
 
-const auto: Result = { id: "trained", habit: "run", name: "Trained", type: "auto", min_minutes: 30, archived: false };
-const manual: Result = { id: "5k", habit: "run", name: "Ran 5k", type: "manual", min_minutes: 30, archived: false };
+const auto: Result = { id: "trained", subGoal: "run", name: "Trained", type: "auto", min_minutes: 30, archived: false };
+const manual: Result = { id: "5k", subGoal: "run", name: "Ran 5k", type: "manual", min_minutes: 30, archived: false };
 
 const check = (uid: string, day: string, at: string, removed_at = ""): ResultCheck => ({
   uid,
@@ -77,14 +77,14 @@ describe("minutes since the last check", () => {
 
   it("count from the last check of any result on the sub-goal, and only that sub-goal", () => {
     const pb: Result = { ...manual, id: "pb", name: "Personal best" };
-    const book: Result = { ...manual, id: "book", habit: "read", name: "Finished a book" };
+    const book: Result = { ...manual, id: "book", subGoal: "read", name: "Finished a book" };
     const checks = [
       check("a", "2026-11-20", "2026-11-20T09:00:00"),
       { ...check("p", "2026-11-21", "2026-11-21T08:00:00"), result: "pb" },
       { ...check("b", "2026-11-22", "2026-11-22T06:00:00"), result: "book" },
     ];
     const results = [manual, pb, book];
-    expect(lastHabitCheck(checks, results, "run", now)?.uid).toBe("p");
+    expect(lastSubGoalCheck(checks, results, "run", now)?.uid).toBe("p");
     expect(minutesSinceLastCheck(results, run, checks, entries, now)).toBe(40 + 10);
   });
 });

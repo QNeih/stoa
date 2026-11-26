@@ -29,7 +29,7 @@ const config: Config = {
     { id: "craft", name: "Craft", rank: 1, archived: false, color: "sage" },
     { id: "body", name: "Body", rank: 2, archived: false, color: "rose" },
   ],
-  habits: [
+  subGoals: [
     { id: "read", goal: "craft", name: "Read", archived: false, created: "" },
     { id: "walk", goal: "body", name: "Walk", archived: false, created: "" },
   ],
@@ -37,9 +37,9 @@ const config: Config = {
 };
 
 let n = 0;
-const session = (habit: string, day: string, minutes: number): StoredEntry => {
+const session = (subGoal: string, day: string, minutes: number): StoredEntry => {
   const start = `${day}T09:00:00+01:00`;
-  const e: LogEntry = { type: "session", habit, task: "", start, end: new Date(Date.parse(start) + minutes * 60_000).toISOString(), note: "" };
+  const e: LogEntry = { type: "session", subGoal, task: "", start, end: new Date(Date.parse(start) + minutes * 60_000).toISOString(), note: "" };
   return { ...e, id: ++n, uid: `u${n}`, day: dayOf(e) };
 };
 

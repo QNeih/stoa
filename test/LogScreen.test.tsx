@@ -70,7 +70,7 @@ class FakeStore {
 
 const config: Config = {
   goals: [{ id: "body", name: "Body", rank: 1, archived: false, color: "rose" }],
-  habits: [
+  subGoals: [
     { id: "gym", goal: "body", name: "Gym", archived: false, created: "" },
     { id: "read", goal: "body", name: "Reading", archived: false, created: "" },
     { id: "swim", goal: "body", name: "Swim", archived: true, created: "" },
@@ -78,9 +78,9 @@ const config: Config = {
   results: [],
 };
 
-const session = (habit: string, day: string, from: string, to: string): LogEntry => ({
+const session = (subGoal: string, day: string, from: string, to: string): LogEntry => ({
   type: "session",
-  habit,
+  subGoal,
   task: "",
   start: `${day}T${from}:00+01:00`,
   end: `${day}T${to}:00+01:00`,
@@ -204,7 +204,7 @@ describe("Log screen", () => {
     expect(preview()).toMatchObject({ "Sub-goal": "Gym", Time: "11:15–12:00", Duration: "45m" });
     expect(container.querySelector(".quick-preview")!.textContent).toContain("Placed to end at 12:00.");
     await tap(buttonByText("Save"));
-    expect(store.entries.map((e) => [e.habit, e.start, e.end])).toEqual([["gym", "2026-11-22T11:15:00+01:00", "2026-11-22T12:00:00+01:00"]]);
+    expect(store.entries.map((e) => [e.subGoal, e.start, e.end])).toEqual([["gym", "2026-11-22T11:15:00+01:00", "2026-11-22T12:00:00+01:00"]]);
     expect(container.querySelector<HTMLInputElement>('input[aria-label="Quick add"]')!.value).toBe("");
     expect(rows()).toEqual(["Gym 11:15–12:00"]);
   });
@@ -223,7 +223,7 @@ describe("Log screen", () => {
     await type("45m gym yesterday");
     await tap(buttonByText("Change"));
     expect(container.querySelector<HTMLInputElement>('input[name="start"]')!.value).toBe("2026-11-22T11:15");
-    expect(container.querySelector<HTMLSelectElement>('select[name="habit"]')!.value).toBe("gym");
+    expect(container.querySelector<HTMLSelectElement>('select[name="subGoal"]')!.value).toBe("gym");
   });
 
   it("warns when quick input overlaps a saved session, and trim ends the earlier one where the new one starts", async () => {
@@ -235,7 +235,7 @@ describe("Log screen", () => {
     expect(store.entries).toHaveLength(1);
     await tap(buttonByText("Trim"));
     expect(store.entries.find((e) => e.id === earlier.id)!.end).toBe("2026-11-22T11:15:00+01:00");
-    expect(store.entries.find((e) => e.habit === "gym")!.start).toBe("2026-11-22T11:15:00+01:00");
+    expect(store.entries.find((e) => e.subGoal === "gym")!.start).toBe("2026-11-22T11:15:00+01:00");
   });
 
   it("warns when an edit overlaps a saved session, and replace deletes it", async () => {
@@ -251,7 +251,7 @@ describe("Log screen", () => {
   });
 
   it("editing an old day's session changes its automatic result and marks that day for sync", async () => {
-    const result: Result = { id: "lift", habit: "gym", name: "Lift", type: "auto", min_minutes: 30, archived: false };
+    const result: Result = { id: "lift", subGoal: "gym", name: "Lift", type: "auto", min_minutes: 30, archived: false };
     const old = store.seed(session("gym", "2026-11-02", "07:00", "07:20"));
     store.seed(session("gym", "2026-11-23", "07:00", "07:45"));
     expect(autoDoneDays(result, store.entries)).toEqual(["2026-11-23"]);

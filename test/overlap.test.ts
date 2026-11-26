@@ -3,7 +3,7 @@ import { keepBoth, overlapping, overlappingIds, overlaps, replaceOverlapped, tri
 import type { SessionEntry, StoredEntry } from "../src/types";
 
 const at = (time: string) => `2026-11-23T${time}:00+01:00`;
-const session = (start: string, end: string, habit = "new"): SessionEntry => ({ type: "session", habit, task: "", start: at(start), end: at(end), note: "" });
+const session = (start: string, end: string, subGoal = "new"): SessionEntry => ({ type: "session", subGoal, task: "", start: at(start), end: at(end), note: "" });
 const saved = (id: number, start: string, end: string): StoredEntry => ({ ...session(start, end, `h${id}`), id, uid: `u${id}`, day: "2026-11-23" });
 const times = (s: SessionEntry) => [s.start.slice(11, 16), s.end.slice(11, 16)];
 
@@ -46,7 +46,7 @@ describe("resolving an overlap", () => {
     const fix = trimOverlapped(session("09:00", "11:00"), [before, after])!;
     expect(times(fix.session)).toEqual(["09:00", "10:30"]);
     expect(fix.update.map((u) => [u.id, ...times(u.entry)])).toEqual([[1, "08:00", "09:00"]]);
-    expect(fix.update[0].entry).toEqual({ type: "session", habit: "h1", task: "", start: at("08:00"), end: at("09:00"), note: "" });
+    expect(fix.update[0].entry).toEqual({ type: "session", subGoal: "h1", task: "", start: at("08:00"), end: at("09:00"), note: "" });
     expect(fix.remove).toEqual([]);
   });
 

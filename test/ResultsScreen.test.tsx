@@ -40,9 +40,9 @@ class FakeStore {
 }
 
 const at = (day: string, time: string) => `2026-11-${day}T${time}:00+01:00`;
-const session = (id: number, habit: string, day: string, start: string, end: string): StoredEntry => ({
+const session = (id: number, subGoal: string, day: string, start: string, end: string): StoredEntry => ({
   type: "session",
-  habit,
+  subGoal,
   task: "",
   start: at(day, start),
   end: at(day, end),
@@ -57,17 +57,17 @@ const config: Config = {
     { id: "body", name: "Body", rank: 1, archived: false, color: "rose" },
     { id: "old", name: "Old", rank: 2, archived: true, color: "sage" },
   ],
-  habits: [
+  subGoals: [
     { id: "run", goal: "body", name: "Run", archived: false, created: "2026-11-01" },
     { id: "gym", goal: "body", name: "Gym", archived: false, created: "" },
     { id: "chess", goal: "old", name: "Chess", archived: false, created: "" },
   ],
   results: [
-    { id: "5k", habit: "run", name: "Ran 5k", type: "manual", min_minutes: 30, archived: false },
-    { id: "pb", habit: "run", name: "Personal best", type: "manual", min_minutes: 30, archived: false },
-    { id: "trained", habit: "gym", name: "Trained", type: "auto", min_minutes: 30, archived: false },
-    { id: "marathon", habit: "run", name: "Marathon", type: "manual", min_minutes: 30, archived: true },
-    { id: "rated", habit: "chess", name: "Rated 1500", type: "manual", min_minutes: 30, archived: false },
+    { id: "5k", subGoal: "run", name: "Ran 5k", type: "manual", min_minutes: 30, archived: false },
+    { id: "pb", subGoal: "run", name: "Personal best", type: "manual", min_minutes: 30, archived: false },
+    { id: "trained", subGoal: "gym", name: "Trained", type: "auto", min_minutes: 30, archived: false },
+    { id: "marathon", subGoal: "run", name: "Marathon", type: "manual", min_minutes: 30, archived: true },
+    { id: "rated", subGoal: "chess", name: "Rated 1500", type: "manual", min_minutes: 30, archived: false },
   ],
 };
 
@@ -161,7 +161,7 @@ describe("Results", () => {
     });
 
     it("count the running timer up to now, and the sub-goal's time since it was created for the first check", async () => {
-      const s = seeded({ habit: "run", task: "", start: at("23", "09:50") });
+      const s = seeded({ subGoal: "run", task: "", start: at("23", "09:50") });
       s.checks = [];
       await render(s);
       await act(() => stoa.checkResult("5k"));

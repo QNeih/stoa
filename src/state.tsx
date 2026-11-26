@@ -106,7 +106,7 @@ export function useStoaState(store: Store, initial: StoaData) {
     let status: SyncStatus;
     try {
       const api = sheetsApi(account.email);
-      const r = await rollUp(store, api, await openSheet(api), localDate(new Date()));
+      const r = await rollUp(store, api, await openSheet(api), planDay(new Date()));
       status = r.errors.length
         ? { at: new Date().toISOString(), ok: false, message: r.errors[0] }
         : { at: new Date().toISOString(), ok: true, message: r.pushedDays.length ? `Wrote ${r.pushedDays.join(", ")}` : "Up to date" };
@@ -152,7 +152,7 @@ export function useStoaState(store: Store, initial: StoaData) {
    * Starts a timer, now or at `startAt` in the past. Returns a message when `startAt` is not allowed,
    * and null once the timer runs.
    */
-  async function startTimer(habit: string, task: string, startAt?: Date): Promise<string | null> {
+  async function startTimer(subGoal: string, task: string, startAt?: Date): Promise<string | null> {
     renewForTap();
     const now = new Date();
     const start = startAt ?? now;
@@ -166,7 +166,7 @@ export function useStoaState(store: Store, initial: StoaData) {
       if (problem) return problem;
     }
     // One timer at a time: starting another ends the first as a session.
-    const next = switchTimer(running, { habit, task }, start);
+    const next = switchTimer(running, { subGoal, task }, start);
     if (next.session) await store.addEntry(next.session);
     await store.setTimer(next.timer);
     await reload();
@@ -180,7 +180,7 @@ export function useStoaState(store: Store, initial: StoaData) {
     if (!t) return null;
     const problem = validateStart(start, new Date(), latestSessionEnd(dataRef.current.entries));
     if (problem) return problem;
-    await store.setTimer({ habit: t.habit, task: t.task, start: isoLocal(start) });
+    await store.setTimer({ subGoal: t.subGoal, task: t.task, start: isoLocal(start) });
     await reload();
     return null;
   }
@@ -240,18 +240,18 @@ export function useStoaState(store: Store, initial: StoaData) {
   async function moveTodayItem(from: number, to: number): Promise<void> {
     if (from === to) return;
     renewForTap();
-    const items = todayItems(dataRef.current.plan, planDay(new Date()));
+    const items = todayItems(dataRef.current.plan, planDay(new Date()), dataRef.current.config, dataRef.current.checks);
     await writeTodayItems(moveItem(items, from, to));
     void sync();
   }
 
   /** Adds a sub-goal to today's list and starts its timer. */
-  async function addAndStart(habit: string): Promise<void> {
+  async function addAndStart(subGoal: string): Promise<void> {
     renewForTap();
-    const items = todayItems(dataRef.current.plan, planDay(new Date()));
-    const item = addedItem(habit);
+    const items = todayItems(dataRef.current.plan, planDay(new Date()), dataRef.current.config, dataRef.current.checks);
+    const item = addedItem(subGoal);
     await writeTodayItems([...items, item]);
-    await startTimer(item.habit, item.task);
+    await startTimer(item.subGoal, item.task);
     void sync();
   }
 
@@ -287,8 +287,8 @@ export function useStoaState(store: Store, initial: StoaData) {
     renewForTap();
     const { config, checks, entries, timer } = dataRef.current;
     const result = config.results.find((r) => r.id === resultId);
-    const habit = config.habits.find((h) => h.id === result?.habit);
-    if (!result || result.type !== "manual" || !habit) return;
+    const subGoal = config.subGoals.find((h) => h.id === result?.subGoal);
+    if (!result || result.type !== "manual" || !subGoal) return;
     const now = new Date();
     const day = localDate(now);
     const tracked = timer ? [...entries, timerSession(timer, now)] : entries;
@@ -297,7 +297,7 @@ export function useStoaState(store: Store, initial: StoaData) {
       day,
       checked_at: isoLocal(now),
       note: note.trim(),
-      minutes_since_last: minutesSinceLastCheck(config.results, habit, checks, tracked, now),
+      minutes_since_last: minutesSinceLastCheck(config.results, subGoal, checks, tracked, now),
       removed_at: "",
     });
     await reload();
@@ -334,14 +334,14 @@ export function useStoaState(store: Store, initial: StoaData) {
     void sync();
   }
 
-  const setHabitArchived = (id: string, archived: boolean) =>
-    editConfig((c) => ({ ...c, habits: c.habits.map((x) => (x.id === id ? { ...x, archived } : x)) }));
+  const setSubGoalArchived = (id: string, archived: boolean) =>
+    editConfig((c) => ({ ...c, subGoals: c.subGoals.map((x) => (x.id === id ? { ...x, archived } : x)) }));
   const renameGoal = (id: string, name: string) =>
     editConfig((c) => ({ ...c, goals: c.goals.map((g) => (g.id === id ? { ...g, name } : g)) }));
   const setGoalColor = (id: string, color: PaletteKey) =>
     editConfig((c) => ({ ...c, goals: c.goals.map((g) => (g.id === id ? { ...g, color } : g)) }));
-  const renameHabit = (id: string, name: string) =>
-    editConfig((c) => ({ ...c, habits: c.habits.map((x) => (x.id === id ? { ...x, name } : x)) }));
+  const renameSubGoal = (id: string, name: string) =>
+    editConfig((c) => ({ ...c, subGoals: c.subGoals.map((x) => (x.id === id ? { ...x, name } : x)) }));
   const setGoalArchived = (id: string, archived: boolean) =>
     editConfig((c) => ({ ...c, goals: c.goals.map((g) => (g.id === id ? { ...g, archived } : g)) }));
 
@@ -457,11 +457,11 @@ export function useStoaState(store: Store, initial: StoaData) {
     uncheckResult,
     loadEntries,
     latestDayBefore,
-    setHabitArchived,
+    setSubGoalArchived,
     renameGoal,
     setGoalColor,
     setGoalArchived,
-    renameHabit,
+    renameSubGoal,
     signIn,
     signOut,
     exportAll,

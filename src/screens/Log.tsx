@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } fr
 import { Header } from "../components/Header";
 import { PenIcon, TrashIcon } from "../components/Icons";
 import { OverlapWarning, savedOverlaps } from "../components/OverlapWarning";
-import { habitName } from "../format";
+import { subGoalName } from "../format";
 import { firstPageStart, olderPageStart } from "../logs";
 import { overlappingIds, type OverlapFix } from "../overlap";
 import { parseQuickInput, quickSession } from "../quickInput";
@@ -97,7 +97,7 @@ export function LogScreen() {
         <EntryMenu
           entry={menu}
           onClose={() => setMenu(null)}
-          name={habitName(config, menu.habit)}
+          name={subGoalName(config, menu.subGoal)}
         />
       )}
     </div>
@@ -171,12 +171,12 @@ function EntryRow({ entry: e, clash, onMenu }: { entry: StoredEntry; clash: bool
       }}
     >
       <div className="row">
-        <strong>{habitName(config, e.habit)}</strong>
+        <strong>{subGoalName(config, e.subGoal)}</strong>
         <span className="actions">
           <span>{formatDuration(length(e))}</span>
           <button
             className="icon more"
-            aria-label={`Actions for ${habitName(config, e.habit)} ${formatTime(new Date(e.start))}`}
+            aria-label={`Actions for ${subGoalName(config, e.subGoal)} ${formatTime(new Date(e.start))}`}
             onPointerDown={(p) => p.stopPropagation()}
             onClick={(c) => {
               c.stopPropagation();
@@ -236,7 +236,7 @@ function EntryMenu({ entry, name, onClose }: { entry: StoredEntry; name: string;
 function QuickAdd({ text, setText, onChange }: { text: string; setText: (t: string) => void; onChange: (draft: SessionEntry) => void }) {
   const { config, saveSession, loadEntries } = useStoa();
   const [conflict, setConflict] = useState<{ session: SessionEntry; overlapped: StoredEntry[] } | null>(null);
-  const parsed = text.trim() ? parseQuickInput(text, config.habits.filter((h) => !h.archived), new Date()) : null;
+  const parsed = text.trim() ? parseQuickInput(text, config.subGoals.filter((h) => !h.archived), new Date()) : null;
   const session = parsed && quickSession(parsed);
 
   const save = async () => {
@@ -276,7 +276,7 @@ function QuickAdd({ text, setText, onChange }: { text: string; setText: (t: stri
         <div className="card quick-preview" aria-live="polite">
           <dl>
             <dt>Sub-goal</dt>
-            <dd>{parsed.habit?.name ?? "–"}</dd>
+            <dd>{parsed.subGoal?.name ?? "–"}</dd>
             <dt>Date</dt>
             <dd>{dayTitle(parsed.day)}</dd>
             <dt>Time</dt>
@@ -314,7 +314,7 @@ function QuickAdd({ text, setText, onChange }: { text: string; setText: (t: stri
                   parsed.end &&
                   onChange({
                     type: "session",
-                    habit: parsed.habit?.id ?? "",
+                    subGoal: parsed.subGoal?.id ?? "",
                     task: "",
                     start: isoLocal(parsed.start),
                     end: isoLocal(parsed.end),

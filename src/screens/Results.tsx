@@ -12,8 +12,8 @@ import type { Config, Goal, Result } from "../types";
 /** Results that show: not archived, on a sub-goal that is not archived, of a goal that is not archived. */
 function visibleResults(config: Config): Result[] {
   const goals = new Set(activeGoals(config).map((g) => g.id));
-  const habits = new Set(config.habits.filter((h) => !h.archived && goals.has(h.goal)).map((h) => h.id));
-  return config.results.filter((r) => !r.archived && habits.has(r.habit));
+  const subGoals = new Set(config.subGoals.filter((h) => !h.archived && goals.has(h.goal)).map((h) => h.id));
+  return config.results.filter((r) => !r.archived && subGoals.has(r.subGoal));
 }
 
 const goalStyle = (goal: Goal) => ({ "--goal": PALETTE[goalColor(goal)] }) as CSSProperties;
@@ -30,23 +30,23 @@ function dayText(day: string, today: string): string {
  * Rows grouped by goal (a headline, in rank order) and sub-goal (a divider with its name, in config
  * order). Goals and sub-goals without rows are left out.
  */
-function Grouped<T>({ config, items, habitOf, row }: { config: Config; items: T[]; habitOf: (t: T) => string; row: (t: T) => ReactNode }) {
+function Grouped<T>({ config, items, subGoalOf, row }: { config: Config; items: T[]; subGoalOf: (t: T) => string; row: (t: T) => ReactNode }) {
   return activeGoals(config).map((goal) => {
-    const habits = config.habits
+    const subGoals = config.subGoals
       .filter((h) => h.goal === goal.id)
-      .map((h) => ({ habit: h, rows: items.filter((t) => habitOf(t) === h.id) }))
+      .map((h) => ({ subGoal: h, rows: items.filter((t) => subGoalOf(t) === h.id) }))
       .filter((x) => x.rows.length);
-    if (!habits.length) return null;
+    if (!subGoals.length) return null;
     return (
       <section key={goal.id} className="result-goal" style={goalStyle(goal)}>
         <h3 className="goal-headline">
           <span className="dot" />
           {goal.name}
         </h3>
-        {habits.map(({ habit, rows }) => (
-          <div key={habit.id}>
+        {subGoals.map(({ subGoal, rows }) => (
+          <div key={subGoal.id}>
             <div className="divider">
-              <span>{habit.name}</span>
+              <span>{subGoal.name}</span>
             </div>
             <ul className="result-list">{rows.map(row)}</ul>
           </div>
@@ -107,7 +107,7 @@ export function ResultsScreen() {
 
   const openRow = (r: Result) => {
     if (r.type === "auto") {
-      const minutes = Math.floor(msToday(entries, timer, now, r.habit) / 60_000);
+      const minutes = Math.floor(msToday(entries, timer, now, r.subGoal) / 60_000);
       return (
         <li key={r.id} className="result auto">
           <span className="result-name">{r.name}</span>
@@ -184,7 +184,7 @@ export function ResultsScreen() {
         <>
           <h2>Open</h2>
           {open.length ? (
-            <Grouped config={config} items={open} habitOf={(r) => r.habit} row={openRow} />
+            <Grouped config={config} items={open} subGoalOf={(r) => r.subGoal} row={openRow} />
           ) : (
             <p className="muted small">Everything is done for today.</p>
           )}
@@ -193,7 +193,7 @@ export function ResultsScreen() {
             <Grouped
               config={config}
               items={doneGroups(shownDone)}
-              habitOf={(g) => byId.get(g[0].result)!.habit}
+              subGoalOf={(g) => byId.get(g[0].result)!.subGoal}
               row={(g) => <DoneCard key={groupKey(g[0])} entries={g} render={doneEntry} />}
             />
           ) : (

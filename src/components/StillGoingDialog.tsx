@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { formatDuration } from "../time";
-import { habitName, toLocalInput } from "../format";
+import { subGoalName, toLocalInput } from "../format";
 import { useStoa } from "../state";
 import type { RunningTimer } from "../types";
 
@@ -27,7 +27,7 @@ export function StillGoingDialog({ timer }: { timer: RunningTimer }) {
     <dialog ref={dialog} className="modal">
       <h2>Still going?</h2>
       <p>
-        {habitName(config, timer.habit)} started {formatDuration(Date.now() - start.getTime())} ago.
+        {subGoalName(config, timer.subGoal)} started {formatDuration(Date.now() - start.getTime())} ago.
       </p>
       <button className="primary" onClick={() => void confirmStillGoing()}>
         Yes, still going

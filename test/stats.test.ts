@@ -8,16 +8,16 @@ const config: Config = {
     { id: "family", name: "Family", rank: 2, archived: false, color: "rose" },
     { id: "old", name: "Old", rank: 3, archived: true, color: "" },
   ],
-  habits: [
+  subGoals: [
     { id: "job-search", goal: "career", name: "Job search", archived: false, created: "" },
     { id: "partner", goal: "family", name: "Time together", archived: false, created: "" },
   ],
   results: [],
 };
 
-const s = (habit: string, start: string, end: string): LogEntry => ({
+const s = (subGoal: string, start: string, end: string): LogEntry => ({
   type: "session",
-  habit,
+  subGoal,
   task: "",
   start,
   end,
@@ -27,11 +27,11 @@ const s = (habit: string, start: string, end: string): LogEntry => ({
 describe("goal stats", () => {
   const cfg: Config = {
     ...config,
-    habits: [
-      ...config.habits,
+    subGoals: [
+      ...config.subGoals,
       { id: "cv", goal: "career", name: "CV", archived: true, created: "" },
       { id: "unused", goal: "career", name: "Unused", archived: true, created: "" },
-      { id: "old-h", goal: "old", name: "Old habit", archived: false, created: "" },
+      { id: "old-h", goal: "old", name: "Old subGoal", archived: false, created: "" },
     ],
   };
   const now = new Date("2026-11-25T12:00:00+01:00"); // a Wednesday
@@ -56,8 +56,8 @@ describe("goal stats", () => {
   it("lists sub-goals with their totals, leaving out archived ones without time", () => {
     const career = goalStats(cfg, entries, now).find((g) => g.goal === "career")!;
     expect(career.subGoals).toEqual([
-      { habit: "job-search", weekMs: 1 * h, lastWeekMs: 2 * h, allTimeMs: 3 * h },
-      { habit: "cv", weekMs: 0, lastWeekMs: 0, allTimeMs: 0.5 * h },
+      { subGoal: "job-search", weekMs: 1 * h, lastWeekMs: 2 * h, allTimeMs: 3 * h },
+      { subGoal: "cv", weekMs: 0, lastWeekMs: 0, allTimeMs: 0.5 * h },
     ]);
   });
 
